@@ -16,14 +16,27 @@ jobs:
         with:
           channel: stable
 
+      - name: Criar projeto Flutter
+        run: |
+          mkdir /tmp/flutter_project
+          cd /tmp/flutter_project
+          flutter create .
+
+      - name: Copiar aplicativo
+        run: |
+          cp lib/main.dart /tmp/flutter_project/lib/main.dart
+          cp pubspec.yaml /tmp/flutter_project/pubspec.yaml
+
       - name: Instalar dependencias
+        working-directory: /tmp/flutter_project
         run: flutter pub get
 
       - name: Gerar APK
+        working-directory: /tmp/flutter_project
         run: flutter build apk --release
 
       - name: Salvar APK
         uses: actions/upload-artifact@v4
         with:
           name: controle-financeiro-apk
-          path: build/app/outputs/flutter-apk/app-release.apk
+          path: /tmp/flutter_project/build/app/outputs/flutter-apk/app-release.apk
