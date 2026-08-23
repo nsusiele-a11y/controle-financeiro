@@ -16,9 +16,6 @@ jobs:
         with:
           channel: stable
 
-      - name: Criar estrutura Flutter
-        run: flutter create .
-
       - name: Instalar dependencias
         run: flutter pub get
 
