@@ -8,10 +8,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Baixar projeto
+      - name: Baixar codigo
         uses: actions/checkout@v4
 
-      - name: Instalar Flutter
+      - name: Configurar Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: stable
@@ -19,7 +19,7 @@ jobs:
       - name: Criar estrutura Flutter
         run: flutter create .
 
-      - name: Instalar dependências
+      - name: Instalar dependencias
         run: flutter pub get
 
       - name: Gerar APK
