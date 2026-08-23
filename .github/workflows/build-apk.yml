@@ -22,7 +22,7 @@ jobs:
       - name: Gerar APK
         run: flutter build apk --release
 
-      - name: Disponibilizar APK
+      - name: Salvar APK
         uses: actions/upload-artifact@v4
         with:
           name: controle-financeiro-apk
