@@ -24,8 +24,14 @@ jobs:
 
       - name: Copiar aplicativo
         run: |
-          cp lib/main.dart /tmp/flutter_project/lib/main.dart
-          cp pubspec.yaml /tmp/flutter_project/pubspec.yaml
+          cp "$GITHUB_WORKSPACE/lib/main.dart" /tmp/flutter_project/lib/main.dart
+
+      - name: Configurar dependencias
+        working-directory: /tmp/flutter_project
+        run: |
+          flutter pub add sqflite
+          flutter pub add path
+          flutter pub add intl
 
       - name: Instalar dependencias
         working-directory: /tmp/flutter_project
