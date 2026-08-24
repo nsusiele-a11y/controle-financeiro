@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:path/path.dart';
+import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
 
 void main() async {
@@ -29,14 +29,22 @@ class ControleFinanceiroApp extends StatelessWidget {
 
 class DatabaseHelper {
   DatabaseHelper._();
+
   static final DatabaseHelper instance = DatabaseHelper._();
 
   Database? _database;
 
   Future<Database> get database async {
-    if (_database != null) return _database!;
+    if (_database != null) {
+      return _database!;
+    }
 
-    final path = join(await getDatabasesPath(), 'controle_financeiro.db');
+    final databasePath = await getDatabasesPath();
+
+    final path = p.join(
+      databasePath,
+      'controle_financeiro.db',
+    );
 
     _database = await openDatabase(
       path,
@@ -65,12 +73,15 @@ class DatabaseHelper {
   }) async {
     final db = await database;
 
-    return db.insert('movimentacoes', {
-      'tipo': tipo,
-      'categoria': categoria,
-      'valor': valor,
-      'data': data,
-    });
+    return db.insert(
+      'movimentacoes',
+      {
+        'tipo': tipo,
+        'categoria': categoria,
+        'valor': valor,
+        'data': data,
+      },
+    );
   }
 
   Future<List<Map<String, dynamic>>> buscarTodos() async {
@@ -82,7 +93,9 @@ class DatabaseHelper {
     );
   }
 
-  Future<List<Map<String, dynamic>>> buscarPorData(String data) async {
+  Future<List<Map<String, dynamic>>> buscarPorData(
+    String data,
+  ) async {
     final db = await database;
 
     return db.query(
@@ -124,10 +137,14 @@ class _HomePageState extends State<HomePage> {
   final DateFormat formatoData = DateFormat('yyyy-MM-dd');
   final DateFormat formatoExibicao = DateFormat('dd/MM/yyyy');
 
-  double get ganhos =>
-      (clientes * valorCliente) + (manutencoes * valorManutencao);
+  double get ganhos {
+    return (clientes * valorCliente) +
+        (manutencoes * valorManutencao);
+  }
 
-  double get lucro => ganhos - gastos;
+  double get lucro {
+    return ganhos - gastos;
+  }
 
   String moeda(double valor) {
     return NumberFormat.currency(
@@ -139,7 +156,8 @@ class _HomePageState extends State<HomePage> {
   Future<void> carregarDia() async {
     final data = formatoData.format(dataSelecionada);
 
-    final registros = await DatabaseHelper.instance.buscarPorData(data);
+    final registros =
+        await DatabaseHelper.instance.buscarPorData(data);
 
     int novosClientes = 0;
     int novasManutencoes = 0;
@@ -162,6 +180,8 @@ class _HomePageState extends State<HomePage> {
         novosGastos += valor;
       }
     }
+
+    if (!mounted) return;
 
     setState(() {
       clientes = novosClientes;
@@ -197,12 +217,13 @@ class _HomePageState extends State<HomePage> {
 
     final valor = await showDialog<double>(
       context: context,
-      builder: (context) {
+      builder: (dialogContext) {
         return AlertDialog(
           title: const Text('Adicionar gasto'),
           content: TextField(
             controller: controller,
-            keyboardType: const TextInputType.numberWithOptions(
+            keyboardType:
+                const TextInputType.numberWithOptions(
               decimal: true,
             ),
             decoration: const InputDecoration(
@@ -213,7 +234,9 @@ class _HomePageState extends State<HomePage> {
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(context),
+              onPressed: () {
+                Navigator.pop(dialogContext);
+              },
               child: const Text('Cancelar'),
             ),
             FilledButton(
@@ -225,7 +248,7 @@ class _HomePageState extends State<HomePage> {
                 final valor = double.tryParse(texto);
 
                 if (valor != null && valor > 0) {
-                  Navigator.pop(context, valor);
+                  Navigator.pop(dialogContext, valor);
                 }
               },
               child: const Text('Adicionar'),
@@ -234,6 +257,8 @@ class _HomePageState extends State<HomePage> {
         );
       },
     );
+
+    controller.dispose();
 
     if (valor == null) return;
 
@@ -253,7 +278,6 @@ class _HomePageState extends State<HomePage> {
       initialDate: dataSelecionada,
       firstDate: DateTime(2020),
       lastDate: DateTime(2100),
-      locale: const Locale('pt', 'BR'),
     );
 
     if (data != null) {
@@ -265,26 +289,30 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  void diminuirCliente() {
+  Future<void> diminuirCliente() async {
     if (clientes <= 0) return;
 
-    excluirUltimo('Cliente');
+    await excluirUltimo('Cliente');
   }
 
-  void diminuirManutencao() {
+  Future<void> diminuirManutencao() async {
     if (manutencoes <= 0) return;
 
-    excluirUltimo('Manutenção');
+    await excluirUltimo('Manutenção');
   }
 
   Future<void> excluirUltimo(String categoria) async {
-    final registros = await DatabaseHelper.instance.buscarPorData(
+    final registros =
+        await DatabaseHelper.instance.buscarPorData(
       formatoData.format(dataSelecionada),
     );
 
     final encontrados = registros
-        .where((r) =>
-            r['tipo'] == 'ganho' && r['categoria'] == categoria)
+        .where(
+          (registro) =>
+              registro['tipo'] == 'ganho' &&
+              registro['categoria'] == categoria,
+        )
         .toList();
 
     if (encontrados.isEmpty) return;
@@ -319,7 +347,9 @@ class _HomePageState extends State<HomePage> {
       appBar: AppBar(
         title: const Text(
           'Controle Financeiro',
-          style: TextStyle(fontWeight: FontWeight.bold),
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+          ),
         ),
         actions: [
           IconButton(
@@ -345,7 +375,8 @@ class _HomePageState extends State<HomePage> {
                       const Icon(Icons.calendar_month),
                       const SizedBox(width: 12),
                       Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                        crossAxisAlignment:
+                            CrossAxisAlignment.start,
                         children: [
                           const Text(
                             'Data selecionada',
@@ -355,7 +386,8 @@ class _HomePageState extends State<HomePage> {
                             ),
                           ),
                           Text(
-                            formatoExibicao.format(dataSelecionada),
+                            formatoExibicao
+                                .format(dataSelecionada),
                             style: const TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.bold,
@@ -457,7 +489,9 @@ class _HomePageState extends State<HomePage> {
               height: 52,
               child: FilledButton.icon(
                 onPressed: adicionarGasto,
-                icon: const Icon(Icons.remove_circle_outline),
+                icon: const Icon(
+                  Icons.remove_circle_outline,
+                ),
                 label: const Text(
                   'Adicionar gasto',
                   style: TextStyle(fontSize: 16),
@@ -515,7 +549,8 @@ class AtendimentoCard extends StatelessWidget {
             const SizedBox(width: 14),
             Expanded(
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+                crossAxisAlignment:
+                    CrossAxisAlignment.start,
                 children: [
                   Text(
                     titulo,
@@ -526,19 +561,25 @@ class AtendimentoCard extends StatelessWidget {
                   ),
                   Text(
                     '${moeda(valorUnitario)} cada',
-                    style: const TextStyle(color: Colors.grey),
+                    style: const TextStyle(
+                      color: Colors.grey,
+                    ),
                   ),
                   const SizedBox(height: 4),
                   Text(
                     'Total: ${moeda(total)}',
-                    style: const TextStyle(fontWeight: FontWeight.w600),
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ],
               ),
             ),
             IconButton(
               onPressed: onRemover,
-              icon: const Icon(Icons.remove_circle_outline),
+              icon: const Icon(
+                Icons.remove_circle_outline,
+              ),
             ),
             Text(
               '$quantidade',
@@ -582,7 +623,9 @@ class ResumoCard extends StatelessWidget {
             Icon(
               icone,
               size: 28,
-              color: positivo ? Colors.green : Colors.red,
+              color: positivo
+                  ? Colors.green
+                  : Colors.red,
             ),
             const SizedBox(height: 8),
             Text(titulo),
@@ -605,13 +648,15 @@ class HistoricoPage extends StatefulWidget {
   const HistoricoPage({super.key});
 
   @override
-  State<HistoricoPage> createState() => _HistoricoPageState();
+  State<HistoricoPage> createState() =>
+      _HistoricoPageState();
 }
 
 class _HistoricoPageState extends State<HistoricoPage> {
   List<Map<String, dynamic>> registros = [];
 
-  final DateFormat formatoData = DateFormat('dd/MM/yyyy');
+  final DateFormat formatoData =
+      DateFormat('dd/MM/yyyy');
 
   String moeda(double valor) {
     return NumberFormat.currency(
@@ -621,7 +666,10 @@ class _HistoricoPageState extends State<HistoricoPage> {
   }
 
   Future<void> carregar() async {
-    final dados = await DatabaseHelper.instance.buscarTodos();
+    final dados =
+        await DatabaseHelper.instance.buscarTodos();
+
+    if (!mounted) return;
 
     setState(() {
       registros = dados;
@@ -660,8 +708,10 @@ class _HistoricoPageState extends State<HistoricoPage> {
 
                 final tipo = registro['tipo'];
                 final categoria = registro['categoria'];
-                final valor = (registro['valor'] as num).toDouble();
-                final data = DateTime.parse(registro['data']);
+                final valor =
+                    (registro['valor'] as num).toDouble();
+                final data =
+                    DateTime.parse(registro['data']);
 
                 final ganho = tipo == 'ganho';
 
@@ -680,7 +730,9 @@ class _HistoricoPageState extends State<HistoricoPage> {
                         fontWeight: FontWeight.bold,
                       ),
                     ),
-                    subtitle: Text(formatoData.format(data)),
+                    subtitle: Text(
+                      formatoData.format(data),
+                    ),
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
@@ -696,8 +748,11 @@ class _HistoricoPageState extends State<HistoricoPage> {
                           ),
                         ),
                         IconButton(
-                          onPressed: () => excluir(registro['id']),
-                          icon: const Icon(Icons.delete_outline),
+                          onPressed: () =>
+                              excluir(registro['id']),
+                          icon: const Icon(
+                            Icons.delete_outline,
+                          ),
                         ),
                       ],
                     ),
