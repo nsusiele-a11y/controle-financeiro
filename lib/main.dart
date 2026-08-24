@@ -1,49 +1,46 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-void main() async {
+void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(const MeuControleApp());
+  runApp(const ControleFinanceiroApp());
 }
 
-final moeda = NumberFormat.currency(
-  locale: 'pt_BR',
-  symbol: 'R\$',
-);
+class ControleFinanceiroApp extends StatelessWidget {
+  const ControleFinanceiroApp({super.key});
 
-final dataFormatada = DateFormat('dd/MM/yyyy');
-
-String dataBanco(DateTime data) {
-  return DateFormat('yyyy-MM-dd').format(data);
-}
-
-double valorNumero(String texto) {
-  return double.tryParse(
-        texto
-            .replaceAll('.', '')
-            .replaceAll(',', '.'),
-      ) ??
-      0;
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Controle Financeiro',
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        useMaterial3: true,
+        colorSchemeSeed: Colors.blue,
+        scaffoldBackgroundColor: const Color(0xFFF5F7FA),
+      ),
+      home: const HomePage(),
+    );
+  }
 }
 
 // ============================================================
-// MODELO DE MOVIMENTAÇÃO
+// MODELOS
 // ============================================================
 
 class Movimentacao {
   final String id;
   final String tipo;
-  final String categoria;
+  final String descricao;
   final double valor;
-  final String data;
+  final DateTime data;
 
   Movimentacao({
     required this.id,
     required this.tipo,
-    required this.categoria,
+    required this.descricao,
     required this.valor,
     required this.data,
   });
@@ -52,42 +49,36 @@ class Movimentacao {
     return {
       'id': id,
       'tipo': tipo,
-      'categoria': categoria,
+      'descricao': descricao,
       'valor': valor,
-      'data': data,
+      'data': data.toIso8601String(),
     };
   }
 
-  factory Movimentacao.fromMap(
-    Map<String, dynamic> map,
-  ) {
+  factory Movimentacao.fromMap(Map<String, dynamic> map) {
     return Movimentacao(
-      id: map['id'].toString(),
-      tipo: map['tipo'].toString(),
-      categoria: map['categoria'].toString(),
-      valor: (map['valor'] as num).toDouble(),
-      data: map['data'].toString(),
+      id: map['id'] ?? '',
+      tipo: map['tipo'] ?? 'entrada',
+      descricao: map['descricao'] ?? '',
+      valor: (map['valor'] as num?)?.toDouble() ?? 0,
+      data: DateTime.tryParse(map['data'] ?? '') ?? DateTime.now(),
     );
   }
 }
-
-// ============================================================
-// MODELO DE ESTOQUE
-// ============================================================
 
 class Produto {
   final String id;
   final String nome;
   final int quantidade;
-  final double precoCompra;
-  final double precoVenda;
+  final double custo;
+  final double venda;
 
   Produto({
     required this.id,
     required this.nome,
     required this.quantidade,
-    required this.precoCompra,
-    required this.precoVenda,
+    required this.custo,
+    required this.venda,
   });
 
   Map<String, dynamic> toMap() {
@@ -95,23 +86,18 @@ class Produto {
       'id': id,
       'nome': nome,
       'quantidade': quantidade,
-      'precoCompra': precoCompra,
-      'precoVenda': precoVenda,
+      'custo': custo,
+      'venda': venda,
     };
   }
 
-  factory Produto.fromMap(
-    Map<String, dynamic> map,
-  ) {
+  factory Produto.fromMap(Map<String, dynamic> map) {
     return Produto(
-      id: map['id'].toString(),
-      nome: map['nome'].toString(),
-      quantidade:
-          (map['quantidade'] as num).toInt(),
-      precoCompra:
-          (map['precoCompra'] as num).toDouble(),
-      precoVenda:
-          (map['precoVenda'] as num).toDouble(),
+      id: map['id'] ?? '',
+      nome: map['nome'] ?? '',
+      quantidade: map['quantidade'] ?? 0,
+      custo: (map['custo'] as num?)?.toDouble() ?? 0,
+      venda: (map['venda'] as num?)?.toDouble() ?? 0,
     );
   }
 }
@@ -120,111 +106,53 @@ class Produto {
 // ARMAZENAMENTO
 // ============================================================
 
-class Storage {
-  static const String movimentacoesKey =
-      'movimentacoes';
+class AppStorage {
+  static const String movimentacoesKey = 'movimentacoes';
+  static const String produtosKey = 'produtos';
 
-  static const String estoqueKey =
-      'estoque';
+  static Future<List<Movimentacao>> carregarMovimentacoes() async {
+    final prefs = await SharedPreferences.getInstance();
 
-  static Future<List<Movimentacao>>
-      movimentacoes() async {
-    final prefs =
-        await SharedPreferences.getInstance();
+    final dados = prefs.getStringList(movimentacoesKey) ?? [];
 
-    final lista =
-        prefs.getStringList(
-      movimentacoesKey,
-    );
-
-    if (lista == null) {
-      return [];
-    }
-
-    return lista.map((item) {
-      return Movimentacao.fromMap(
-        jsonDecode(item)
-            as Map<String, dynamic>,
-      );
-    }).toList();
+    return dados
+        .map(
+          (item) =>
+              Movimentacao.fromMap(jsonDecode(item) as Map<String, dynamic>),
+        )
+        .toList();
   }
 
   static Future<void> salvarMovimentacoes(
-    List<Movimentacao> lista,
+    List<Movimentacao> movimentacoes,
   ) async {
-    final prefs =
-        await SharedPreferences.getInstance();
+    final prefs = await SharedPreferences.getInstance();
 
-    await prefs.setStringList(
-      movimentacoesKey,
-      lista
-          .map(
-            (item) =>
-                jsonEncode(item.toMap()),
-          )
-          .toList(),
-    );
+    final dados = movimentacoes
+        .map((item) => jsonEncode(item.toMap()))
+        .toList();
+
+    await prefs.setStringList(movimentacoesKey, dados);
   }
 
-  static Future<List<Produto>> estoque() async {
-    final prefs =
-        await SharedPreferences.getInstance();
+  static Future<List<Produto>> carregarProdutos() async {
+    final prefs = await SharedPreferences.getInstance();
 
-    final lista =
-        prefs.getStringList(estoqueKey);
+    final dados = prefs.getStringList(produtosKey) ?? [];
 
-    if (lista == null) {
-      return [];
-    }
-
-    return lista.map((item) {
-      return Produto.fromMap(
-        jsonDecode(item)
-            as Map<String, dynamic>,
-      );
-    }).toList();
+    return dados
+        .map(
+          (item) => Produto.fromMap(jsonDecode(item) as Map<String, dynamic>),
+        )
+        .toList();
   }
 
-  static Future<void> salvarEstoque(
-    List<Produto> lista,
-  ) async {
-    final prefs =
-        await SharedPreferences.getInstance();
+  static Future<void> salvarProdutos(List<Produto> produtos) async {
+    final prefs = await SharedPreferences.getInstance();
 
-    await prefs.setStringList(
-      estoqueKey,
-      lista
-          .map(
-            (item) =>
-                jsonEncode(item.toMap()),
-          )
-          .toList(),
-    );
-  }
-}
+    final dados = produtos.map((item) => jsonEncode(item.toMap())).toList();
 
-// ============================================================
-// APP
-// ============================================================
-
-class MeuControleApp extends StatelessWidget {
-  const MeuControleApp({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Meu Controle',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.green,
-        ),
-        scaffoldBackgroundColor:
-            const Color(0xFFF5F7F6),
-      ),
-      home: const HomePage(),
-    );
+    await prefs.setStringList(produtosKey, dados);
   }
 }
 
@@ -236,292 +164,121 @@ class HomePage extends StatefulWidget {
   const HomePage({super.key});
 
   @override
-  State<HomePage> createState() =>
-      _HomePageState();
+  State<HomePage> createState() => _HomePageState();
 }
 
 class _HomePageState extends State<HomePage> {
-  int pagina = 0;
+  int paginaAtual = 0;
 
-  DateTime dataSelecionada =
-      DateTime.now();
+  List<Movimentacao> movimentacoes = [];
+  List<Produto> produtos = [];
 
-  Future<void> registrarGanho(
-    String categoria,
-    double valor,
-  ) async {
-    final lista =
-        await Storage.movimentacoes();
+  bool carregando = true;
 
-    lista.add(
-      Movimentacao(
-        id: DateTime.now()
-            .microsecondsSinceEpoch
-            .toString(),
-        tipo: 'ganho',
-        categoria: categoria,
-        valor: valor,
-        data: dataBanco(
-          dataSelecionada,
-        ),
-      ),
-    );
-
-    await Storage.salvarMovimentacoes(
-      lista,
-    );
-
-    setState(() {});
+  @override
+  void initState() {
+    super.initState();
+    carregarDados();
   }
 
-  Future<void> adicionarGasto() async {
-    final categoria =
-        TextEditingController();
+  Future<void> carregarDados() async {
+    final movimentos = await AppStorage.carregarMovimentacoes();
+    final estoque = await AppStorage.carregarProdutos();
 
-    final valor =
-        TextEditingController();
+    if (!mounted) return;
 
-    final resultado =
-        await showDialog<bool>(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title:
-              const Text('Adicionar gasto'),
-          content: Column(
-            mainAxisSize:
-                MainAxisSize.min,
-            children: [
-              TextField(
-                controller: categoria,
-                decoration:
-                    const InputDecoration(
-                  labelText: 'Descrição',
-                ),
-              ),
-              TextField(
-                controller: valor,
-                keyboardType:
-                    const TextInputType
-                        .numberWithOptions(
-                  decimal: true,
-                ),
-                decoration:
-                    const InputDecoration(
-                  labelText: 'Valor',
-                  prefixText: 'R\$ ',
-                ),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.pop(
-                  context,
-                  false,
-                );
-              },
-              child:
-                  const Text('Cancelar'),
-            ),
-            FilledButton(
-              onPressed: () async {
-                final valorFinal =
-                    valorNumero(
-                  valor.text,
-                );
-
-                if (categoria.text
-                        .trim()
-                        .isEmpty ||
-                    valorFinal <= 0) {
-                  return;
-                }
-
-                final lista =
-                    await Storage
-                        .movimentacoes();
-
-                lista.add(
-                  Movimentacao(
-                    id: DateTime.now()
-                        .microsecondsSinceEpoch
-                        .toString(),
-                    tipo: 'gasto',
-                    categoria:
-                        categoria.text
-                            .trim(),
-                    valor: valorFinal,
-                    data: dataBanco(
-                      dataSelecionada,
-                    ),
-                  ),
-                );
-
-                await Storage
-                    .salvarMovimentacoes(
-                  lista,
-                );
-
-                if (context.mounted) {
-                  Navigator.pop(
-                    context,
-                    true,
-                  );
-                }
-              },
-              child:
-                  const Text('Salvar'),
-            ),
-          ],
-        );
-      },
-    );
-
-    categoria.dispose();
-    valor.dispose();
-
-    if (resultado == true) {
-      setState(() {});
-    }
+    setState(() {
+      movimentacoes = movimentos;
+      produtos = estoque;
+      carregando = false;
+    });
   }
 
-  Future<void> outroGanho() async {
-    final valor =
-        TextEditingController();
-
-    final resultado =
-        await showDialog<double>(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title:
-              const Text('Outro ganho'),
-          content: TextField(
-            controller: valor,
-            keyboardType:
-                const TextInputType
-                    .numberWithOptions(
-              decimal: true,
-            ),
-            decoration:
-                const InputDecoration(
-              labelText: 'Valor',
-              prefixText: 'R\$ ',
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.pop(context);
-              },
-              child:
-                  const Text('Cancelar'),
-            ),
-            FilledButton(
-              onPressed: () {
-                final valorFinal =
-                    valorNumero(
-                  valor.text,
-                );
-
-                if (valorFinal > 0) {
-                  Navigator.pop(
-                    context,
-                    valorFinal,
-                  );
-                }
-              },
-              child:
-                  const Text('Adicionar'),
-            ),
-          ],
-        );
-      },
-    );
-
-    valor.dispose();
-
-    if (resultado != null) {
-      await registrarGanho(
-        'Outro ganho',
-        resultado,
-      );
-    }
+  double get totalEntradas {
+    return movimentacoes
+        .where((item) => item.tipo == 'entrada')
+        .fold(0, (total, item) => total + item.valor);
   }
 
-  Future<void> escolherData() async {
-    final data =
-        await showDatePicker(
-      context: context,
-      initialDate:
-          dataSelecionada,
-      firstDate:
-          DateTime(2020),
-      lastDate:
-          DateTime(2100),
-    );
-
-    if (data != null) {
-      setState(() {
-        dataSelecionada =
-            data;
-      });
-    }
+  double get totalSaidas {
+    return movimentacoes
+        .where((item) => item.tipo == 'saida')
+        .fold(0, (total, item) => total + item.valor);
   }
+
+  double get saldo => totalEntradas - totalSaidas;
 
   @override
   Widget build(BuildContext context) {
+    if (carregando) {
+      return const Scaffold(
+        body: Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+
     final paginas = [
       DashboardPage(
-        data: dataSelecionada,
-        onData: escolherData,
-        onGanho: registrarGanho,
-        onGasto: adicionarGasto,
-        onOutroGanho: outroGanho,
+        entradas: totalEntradas,
+        saidas: totalSaidas,
+        saldo: saldo,
+        produtos: produtos,
+        movimentacoes: movimentacoes,
       ),
-      const EstoquePage(),
-      const HistoricoPage(),
+      EstoquePage(
+        produtos: produtos,
+        onAlterar: carregarDados,
+      ),
+      FinanceiroPage(
+        movimentacoes: movimentacoes,
+        onAlterar: carregarDados,
+      ),
+      RelatoriosPage(
+        entradas: totalEntradas,
+        saidas: totalSaidas,
+        saldo: saldo,
+        produtos: produtos,
+        movimentacoes: movimentacoes,
+      ),
     ];
 
     return Scaffold(
-      body: SafeArea(
-        child: paginas[pagina],
+      appBar: AppBar(
+        title: const Text(
+          'Controle Financeiro',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        centerTitle: false,
       ),
-      bottomNavigationBar:
-          NavigationBar(
-        selectedIndex: pagina,
-        onDestinationSelected:
-            (index) {
+      body: paginas[paginaAtual],
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: paginaAtual,
+        onDestinationSelected: (index) {
           setState(() {
-            pagina = index;
+            paginaAtual = index;
           });
         },
         destinations: const [
           NavigationDestination(
-            icon: Icon(
-              Icons.dashboard_outlined,
-            ),
-            selectedIcon: Icon(
-              Icons.dashboard,
-            ),
-            label: 'Resumo',
+            icon: Icon(Icons.dashboard_outlined),
+            selectedIcon: Icon(Icons.dashboard),
+            label: 'Início',
           ),
           NavigationDestination(
-            icon: Icon(
-              Icons.inventory_2_outlined,
-            ),
-            selectedIcon: Icon(
-              Icons.inventory_2,
-            ),
+            icon: Icon(Icons.inventory_2_outlined),
+            selectedIcon: Icon(Icons.inventory_2),
             label: 'Estoque',
           ),
           NavigationDestination(
-            icon: Icon(
-              Icons.history,
-            ),
-            label: 'Histórico',
+            icon: Icon(Icons.attach_money),
+            selectedIcon: Icon(Icons.account_balance_wallet),
+            label: 'Financeiro',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.bar_chart_outlined),
+            selectedIcon: Icon(Icons.bar_chart),
+            label: 'Relatórios',
           ),
         ],
       ),
@@ -533,338 +290,163 @@ class _HomePageState extends State<HomePage> {
 // DASHBOARD
 // ============================================================
 
-class DashboardPage extends StatefulWidget {
-  final DateTime data;
-
-  final VoidCallback onData;
-
-  final Future<void> Function(
-    String,
-    double,
-  ) onGanho;
-
-  final Future<void> Function()
-      onGasto;
-
-  final Future<void> Function()
-      onOutroGanho;
+class DashboardPage extends StatelessWidget {
+  final double entradas;
+  final double saidas;
+  final double saldo;
+  final List<Produto> produtos;
+  final List<Movimentacao> movimentacoes;
 
   const DashboardPage({
     super.key,
-    required this.data,
-    required this.onData,
-    required this.onGanho,
-    required this.onGasto,
-    required this.onOutroGanho,
+    required this.entradas,
+    required this.saidas,
+    required this.saldo,
+    required this.produtos,
+    required this.movimentacoes,
   });
 
-  @override
-  State<DashboardPage> createState() =>
-      _DashboardPageState();
-}
-
-class _DashboardPageState
-    extends State<DashboardPage> {
-  double ganhos = 0;
-  double gastos = 0;
-  int atendimentos = 0;
-
-  Future<void> carregar() async {
-    final lista =
-        await Storage.movimentacoes();
-
-    final data =
-        dataBanco(widget.data);
-
-    double totalGanhos = 0;
-    double totalGastos = 0;
-    int totalAtendimentos = 0;
-
-    for (final item in lista) {
-      if (item.data != data) {
-        continue;
-      }
-
-      if (item.tipo == 'ganho') {
-        totalGanhos += item.valor;
-        totalAtendimentos++;
-      } else {
-        totalGastos += item.valor;
-      }
-    }
-
-    if (!mounted) return;
-
-    setState(() {
-      ganhos = totalGanhos;
-      gastos = totalGastos;
-      atendimentos =
-          totalAtendimentos;
-    });
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    carregar();
+  String moeda(double valor) {
+    return 'R\$ ${valor.toStringAsFixed(2).replaceAll('.', ',')}';
   }
 
   @override
   Widget build(BuildContext context) {
-    final lucro =
-        ganhos - gastos;
-
     return RefreshIndicator(
-      onRefresh: carregar,
+      onRefresh: () async {},
       child: ListView(
-        padding:
-            const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(16),
         children: [
+          const Text(
+            'Visão geral',
+            style: TextStyle(
+              fontSize: 26,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+
+          const SizedBox(height: 6),
+
+          Text(
+            'Resumo financeiro e do estoque',
+            style: TextStyle(
+              color: Colors.grey.shade700,
+            ),
+          ),
+
+          const SizedBox(height: 20),
+
+          _CardResumo(
+            titulo: 'Saldo atual',
+            valor: moeda(saldo),
+            icone: Icons.account_balance_wallet,
+          ),
+
+          const SizedBox(height: 12),
+
           Row(
             children: [
-              const Expanded(
-                child: Text(
-                  'Meu Controle',
-                  style: TextStyle(
-                    fontSize: 28,
-                    fontWeight:
-                        FontWeight.bold,
-                  ),
+              Expanded(
+                child: _CardResumo(
+                  titulo: 'Entradas',
+                  valor: moeda(entradas),
+                  icone: Icons.arrow_downward,
                 ),
               ),
-              IconButton(
-                onPressed:
-                    widget.onData,
-                icon: const Icon(
-                  Icons.calendar_month,
+              const SizedBox(width: 12),
+              Expanded(
+                child: _CardResumo(
+                  titulo: 'Saídas',
+                  valor: moeda(saidas),
+                  icone: Icons.arrow_upward,
                 ),
               ),
             ],
           ),
 
-          Text(
-            dataFormatada.format(
-              widget.data,
-            ),
-            style: const TextStyle(
-              color: Colors.grey,
-            ),
+          const SizedBox(height: 20),
+
+          _InfoCard(
+            titulo: 'Estoque',
+            icone: Icons.inventory_2,
+            valor: '${produtos.length} produtos cadastrados',
           ),
 
-          const SizedBox(
-            height: 16,
+          const SizedBox(height: 12),
+
+          _InfoCard(
+            titulo: 'Movimentações',
+            icone: Icons.receipt_long,
+            valor: '${movimentacoes.length} registros',
           ),
+
+          const SizedBox(height: 20),
 
           Card(
             child: Padding(
-              padding:
-                  const EdgeInsets.all(20),
+              padding: const EdgeInsets.all(18),
               child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text(
-                    'Lucro do dia',
-                  ),
-                  const SizedBox(
-                    height: 8,
-                  ),
-                  Text(
-                    moeda.format(
-                      lucro,
-                    ),
-                    style:
-                        TextStyle(
-                      fontSize: 32,
-                      fontWeight:
-                          FontWeight.bold,
-                      color: lucro >= 0
-                          ? Colors.green
-                          : Colors.red,
+                    'Aplicativo',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
-                  const SizedBox(
-                    height: 8,
-                  ),
+                  const SizedBox(height: 10),
                   Text(
-                    '$atendimentos registros hoje',
+                    'Sistema preparado para controle financeiro, '
+                    'gestão de estoque e relatórios.',
+                    style: TextStyle(
+                      color: Colors.grey.shade700,
+                      height: 1.5,
+                    ),
                   ),
                 ],
               ),
-            ),
-          ),
-
-          const SizedBox(
-            height: 12,
-          ),
-
-          Row(
-            children: [
-              Expanded(
-                child: _resumo(
-                  'Ganhos',
-                  ganhos,
-                  Colors.green,
-                  Icons
-                      .arrow_upward,
-                ),
-              ),
-              const SizedBox(
-                width: 10,
-              ),
-              Expanded(
-                child: _resumo(
-                  'Gastos',
-                  gastos,
-                  Colors.red,
-                  Icons
-                      .arrow_downward,
-                ),
-              ),
-            ],
-          ),
-
-          const SizedBox(
-            height: 24,
-          ),
-
-          const Text(
-            'Atendimentos',
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight:
-                  FontWeight.bold,
-            ),
-          ),
-
-          const SizedBox(
-            height: 8,
-          ),
-
-          _servico(
-            'Cílios normal',
-            120,
-            Icons.remove_red_eye,
-          ),
-
-          _servico(
-            'Fox',
-            150,
-            Icons.auto_awesome,
-          ),
-
-          _servico(
-            'Sobrancelha',
-            30,
-            Icons.face,
-          ),
-
-          _servico(
-            'Manutenção',
-            80,
-            Icons.build,
-          ),
-
-          const SizedBox(
-            height: 8,
-          ),
-
-          OutlinedButton.icon(
-            onPressed:
-                () async {
-              await widget
-                  .onOutroGanho();
-              await carregar();
-            },
-            icon:
-                const Icon(Icons.add),
-            label: const Text(
-              'Outro ganho',
-            ),
-          ),
-
-          const SizedBox(
-            height: 10,
-          ),
-
-          FilledButton.icon(
-            onPressed:
-                () async {
-              await widget
-                  .onGasto();
-              await carregar();
-            },
-            icon: const Icon(
-              Icons.remove_circle,
-            ),
-            label: const Text(
-              'Adicionar gasto',
             ),
           ),
         ],
       ),
     );
   }
+}
 
-  Widget _servico(
-    String nome,
-    double valor,
-    IconData icone,
-  ) {
-    return Card(
-      child: ListTile(
-        leading: CircleAvatar(
-          child: Icon(icone),
-        ),
-        title: Text(
-          nome,
-          style:
-              const TextStyle(
-            fontWeight:
-                FontWeight.bold,
-          ),
-        ),
-        subtitle:
-            Text(moeda.format(valor)),
-        trailing:
-            const Icon(
-          Icons.add_circle,
-        ),
-        onTap: () async {
-          await widget.onGanho(
-            nome,
-            valor,
-          );
-          await carregar();
-        },
-      ),
-    );
-  }
+class _CardResumo extends StatelessWidget {
+  final String titulo;
+  final String valor;
+  final IconData icone;
 
-  Widget _resumo(
-    String titulo,
-    double valor,
-    Color cor,
-    IconData icone,
-  ) {
+  const _CardResumo({
+    required this.titulo,
+    required this.valor,
+    required this.icone,
+  });
+
+  @override
+  Widget build(BuildContext context) {
     return Card(
       child: Padding(
-        padding:
-            const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(18),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(
-              icone,
-              color: cor,
-            ),
-            const SizedBox(
-              height: 5,
-            ),
-            Text(titulo),
+            Icon(icone, size: 30),
+            const SizedBox(height: 12),
             Text(
-              moeda.format(valor),
-              style:
-                  const TextStyle(
-                fontWeight:
-                    FontWeight.bold,
+              titulo,
+              style: TextStyle(
+                color: Colors.grey.shade700,
+              ),
+            ),
+            const SizedBox(height: 5),
+            Text(
+              valor,
+              style: const TextStyle(
+                fontSize: 21,
+                fontWeight: FontWeight.bold,
               ),
             ),
           ],
@@ -874,6 +456,464 @@ class _DashboardPageState
   }
 }
 
+class _InfoCard extends StatelessWidget {
+  final String titulo;
+  final IconData icone;
+  final String valor;
+
+  const _InfoCard({
+    required this.titulo,
+    required this.icone,
+    required this.valor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: ListTile(
+        leading: CircleAvatar(
+          child: Icon(icone),
+        ),
+        title: Text(
+          titulo,
+          style: const TextStyle(
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        subtitle: Text(valor),
+      ),
+    );
+  }
+}
+
 // ============================================================
 // ESTOQUE
-//
+// ============================================================
+
+class EstoquePage extends StatefulWidget {
+  final List<Produto> produtos;
+  final VoidCallback onAlterar;
+
+  const EstoquePage({
+    super.key,
+    required this.produtos,
+    required this.onAlterar,
+  });
+
+  @override
+  State<EstoquePage> createState() => _EstoquePageState();
+}
+
+class _EstoquePageState extends State<EstoquePage> {
+  Future<void> adicionarProduto() async {
+    final nomeController = TextEditingController();
+    final quantidadeController = TextEditingController();
+    final custoController = TextEditingController();
+    final vendaController = TextEditingController();
+
+    final resultado = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Novo produto'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: nomeController,
+                  decoration: const InputDecoration(
+                    labelText: 'Nome do produto',
+                  ),
+                ),
+                TextField(
+                  controller: quantidadeController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: 'Quantidade',
+                  ),
+                ),
+                TextField(
+                  controller: custoController,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  decoration: const InputDecoration(
+                    labelText: 'Custo',
+                  ),
+                ),
+                TextField(
+                  controller: vendaController,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  decoration: const InputDecoration(
+                    labelText: 'Preço de venda',
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Salvar'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (resultado != true) return;
+
+    final produto = Produto(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      nome: nomeController.text.trim(),
+      quantidade: int.tryParse(quantidadeController.text) ?? 0,
+      custo: double.tryParse(
+            custoController.text.replaceAll(',', '.'),
+          ) ??
+          0,
+      venda: double.tryParse(
+            vendaController.text.replaceAll(',', '.'),
+          ) ??
+          0,
+    );
+
+    final lista = [...widget.produtos, produto];
+
+    await AppStorage.salvarProdutos(lista);
+
+    widget.onAlterar();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: adicionarProduto,
+        icon: const Icon(Icons.add),
+        label: const Text('Produto'),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          const Text(
+            'Estoque',
+            style: TextStyle(
+              fontSize: 26,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 16),
+          if (widget.produtos.isEmpty)
+            const Card(
+              child: Padding(
+                padding: EdgeInsets.all(24),
+                child: Center(
+                  child: Text(
+                    'Nenhum produto cadastrado.',
+                  ),
+                ),
+              ),
+            )
+          else
+            ...widget.produtos.map(
+              (produto) => Card(
+                child: ListTile(
+                  leading: const CircleAvatar(
+                    child: Icon(Icons.inventory),
+                  ),
+                  title: Text(
+                    produto.nome,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  subtitle: Text(
+                    'Quantidade: ${produto.quantidade}',
+                  ),
+                  trailing: Text(
+                    'R\$ ${produto.venda.toStringAsFixed(2)}',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+// ============================================================
+// FINANCEIRO
+// ============================================================
+
+class FinanceiroPage extends StatefulWidget {
+  final List<Movimentacao> movimentacoes;
+  final VoidCallback onAlterar;
+
+  const FinanceiroPage({
+    super.key,
+    required this.movimentacoes,
+    required this.onAlterar,
+  });
+
+  @override
+  State<FinanceiroPage> createState() => _FinanceiroPageState();
+}
+
+class _FinanceiroPageState extends State<FinanceiroPage> {
+  Future<void> adicionarMovimentacao(String tipo) async {
+    final descricaoController = TextEditingController();
+    final valorController = TextEditingController();
+
+    final resultado = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: Text(
+            tipo == 'entrada' ? 'Nova entrada' : 'Nova saída',
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: descricaoController,
+                decoration: const InputDecoration(
+                  labelText: 'Descrição',
+                ),
+              ),
+              TextField(
+                controller: valorController,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                decoration: const InputDecoration(
+                  labelText: 'Valor',
+                  prefixText: 'R\$ ',
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Salvar'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (resultado != true) return;
+
+    final valor = double.tryParse(
+          valorController.text.replaceAll(',', '.'),
+        ) ??
+        0;
+
+    if (valor <= 0) return;
+
+    final movimentacao = Movimentacao(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      tipo: tipo,
+      descricao: descricaoController.text.trim(),
+      valor: valor,
+      data: DateTime.now(),
+    );
+
+    final lista = [...widget.movimentacoes, movimentacao];
+
+    await AppStorage.salvarMovimentacoes(lista);
+
+    widget.onAlterar();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          const Text(
+            'Financeiro',
+            style: TextStyle(
+              fontSize: 26,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+
+          const SizedBox(height: 16),
+
+          Row(
+            children: [
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: () => adicionarMovimentacao('entrada'),
+                  icon: const Icon(Icons.arrow_downward),
+                  label: const Text('Entrada'),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () => adicionarMovimentacao('saida'),
+                  icon: const Icon(Icons.arrow_upward),
+                  label: const Text('Saída'),
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 20),
+
+          if (widget.movimentacoes.isEmpty)
+            const Card(
+              child: Padding(
+                padding: EdgeInsets.all(24),
+                child: Center(
+                  child: Text(
+                    'Nenhuma movimentação cadastrada.',
+                  ),
+                ),
+              ),
+            )
+          else
+            ...widget.movimentacoes.reversed.map(
+              (item) => Card(
+                child: ListTile(
+                  leading: CircleAvatar(
+                    child: Icon(
+                      item.tipo == 'entrada'
+                          ? Icons.arrow_downward
+                          : Icons.arrow_upward,
+                    ),
+                  ),
+                  title: Text(
+                    item.descricao.isEmpty
+                        ? 'Movimentação'
+                        : item.descricao,
+                  ),
+                  subtitle: Text(
+                    '${item.data.day.toString().padLeft(2, '0')}/'
+                    '${item.data.month.toString().padLeft(2, '0')}/'
+                    '${item.data.year}',
+                  ),
+                  trailing: Text(
+                    '${item.tipo == 'entrada' ? '+' : '-'} '
+                    'R\$ ${item.valor.toStringAsFixed(2)}',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+// ============================================================
+// RELATÓRIOS
+// ============================================================
+
+class RelatoriosPage extends StatelessWidget {
+  final double entradas;
+  final double saidas;
+  final double saldo;
+  final List<Produto> produtos;
+  final List<Movimentacao> movimentacoes;
+
+  const RelatoriosPage({
+    super.key,
+    required this.entradas,
+    required this.saidas,
+    required this.saldo,
+    required this.produtos,
+    required this.movimentacoes,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        const Text(
+          'Relatórios',
+          style: TextStyle(
+            fontSize: 26,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+
+        const SizedBox(height: 20),
+
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(18),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Resumo financeiro',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 15),
+                Text(
+                  'Entradas: R\$ ${entradas.toStringAsFixed(2)}',
+                ),
+                Text(
+                  'Saídas: R\$ ${saidas.toStringAsFixed(2)}',
+                ),
+                Text(
+                  'Saldo: R\$ ${saldo.toStringAsFixed(2)}',
+                ),
+              ],
+            ),
+          ),
+        ),
+
+        const SizedBox(height: 12),
+
+        Card(
+          child: ListTile(
+            leading: const Icon(Icons.inventory),
+            title: const Text('Produtos'),
+            subtitle: Text(
+              '${produtos.length} produtos cadastrados',
+            ),
+          ),
+        ),
+
+        Card(
+          child: ListTile(
+            leading: const Icon(Icons.receipt_long),
+            title: const Text('Movimentações'),
+            subtitle: Text(
+              '${movimentacoes.length} movimentações registradas',
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
