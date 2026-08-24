@@ -20,8 +20,9 @@ jobs:
           flutter-version: "3.35.0"
           channel: stable
           cache: true
-- name: Criar estrutura Flutter
-  run: flutter create --project-name controle_financeiro --platforms=android,web .
+
+      - name: Criar estrutura Flutter
+        run: flutter create --project-name controle_financeiro --platforms=android,web .
 
       - name: Instalar dependências
         run: flutter pub get
