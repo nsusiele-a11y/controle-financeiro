@@ -1,10 +1,19 @@
-name: Gerar versão Web
+name: Gerar e publicar versão Web
 
 on:
   workflow_dispatch:
   push:
     branches:
       - main
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -24,23 +33,39 @@ jobs:
       - name: Criar estrutura Flutter
         run: flutter create --project-name controle_financeiro --platforms=android,web .
 
-      - name: Adicionar dependência shared_preferences
+      - name: Adicionar shared_preferences
         run: flutter pub add shared_preferences
 
       - name: Instalar dependências
         run: flutter pub get
 
-      - name: Remover teste padrão do Flutter
+      - name: Remover teste padrão
         run: rm -f test/widget_test.dart
 
       - name: Analisar projeto
         run: flutter analyze
 
       - name: Gerar versão Web
-        run: flutter build web --release
+        run: flutter build web --release --base-href "/controle-financeiro/"
 
-      - name: Salvar versão Web
-        uses: actions/upload-artifact@v4
+      - name: Configurar GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Preparar arquivos do Pages
+        uses: actions/upload-pages-artifact@v3
         with:
-          name: controle-financeiro-web
           path: build/web
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    runs-on: ubuntu-latest
+
+    needs: build
+
+    steps:
+      - name: Publicar no GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
