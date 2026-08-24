@@ -27,7 +27,65 @@ class ControleFinanceiroApp extends StatelessWidget {
 }
 
 // ============================================================
-// MODELOS
+// MODELO DE PRODUTO
+// ============================================================
+
+class Produto {
+  final String id;
+  final String sku;
+  final String nome;
+  final String categoria;
+  final int quantidade;
+  final int estoqueMinimo;
+  final double custo;
+  final double venda;
+
+  Produto({
+    required this.id,
+    required this.sku,
+    required this.nome,
+    required this.categoria,
+    required this.quantidade,
+    required this.estoqueMinimo,
+    required this.custo,
+    required this.venda,
+  });
+
+  double get valorEstoque => quantidade * custo;
+
+  double get lucroUnitario => venda - custo;
+
+  bool get estoqueBaixo => quantidade <= estoqueMinimo;
+
+  Map<String, dynamic> toMap() {
+    return {
+      'id': id,
+      'sku': sku,
+      'nome': nome,
+      'categoria': categoria,
+      'quantidade': quantidade,
+      'estoqueMinimo': estoqueMinimo,
+      'custo': custo,
+      'venda': venda,
+    };
+  }
+
+  factory Produto.fromMap(Map<String, dynamic> map) {
+    return Produto(
+      id: map['id']?.toString() ?? '',
+      sku: map['sku']?.toString() ?? '',
+      nome: map['nome']?.toString() ?? '',
+      categoria: map['categoria']?.toString() ?? 'Geral',
+      quantidade: (map['quantidade'] as num?)?.toInt() ?? 0,
+      estoqueMinimo: (map['estoqueMinimo'] as num?)?.toInt() ?? 0,
+      custo: (map['custo'] as num?)?.toDouble() ?? 0,
+      venda: (map['venda'] as num?)?.toDouble() ?? 0,
+    );
+  }
+}
+
+// ============================================================
+// MODELO FINANCEIRO
 // ============================================================
 
 class Movimentacao {
@@ -57,47 +115,12 @@ class Movimentacao {
 
   factory Movimentacao.fromMap(Map<String, dynamic> map) {
     return Movimentacao(
-      id: map['id'] ?? '',
-      tipo: map['tipo'] ?? 'entrada',
-      descricao: map['descricao'] ?? '',
+      id: map['id']?.toString() ?? '',
+      tipo: map['tipo']?.toString() ?? 'entrada',
+      descricao: map['descricao']?.toString() ?? '',
       valor: (map['valor'] as num?)?.toDouble() ?? 0,
-      data: DateTime.tryParse(map['data'] ?? '') ?? DateTime.now(),
-    );
-  }
-}
-
-class Produto {
-  final String id;
-  final String nome;
-  final int quantidade;
-  final double custo;
-  final double venda;
-
-  Produto({
-    required this.id,
-    required this.nome,
-    required this.quantidade,
-    required this.custo,
-    required this.venda,
-  });
-
-  Map<String, dynamic> toMap() {
-    return {
-      'id': id,
-      'nome': nome,
-      'quantidade': quantidade,
-      'custo': custo,
-      'venda': venda,
-    };
-  }
-
-  factory Produto.fromMap(Map<String, dynamic> map) {
-    return Produto(
-      id: map['id'] ?? '',
-      nome: map['nome'] ?? '',
-      quantidade: map['quantidade'] ?? 0,
-      custo: (map['custo'] as num?)?.toDouble() ?? 0,
-      venda: (map['venda'] as num?)?.toDouble() ?? 0,
+      data: DateTime.tryParse(map['data']?.toString() ?? '') ??
+          DateTime.now(),
     );
   }
 }
@@ -107,8 +130,31 @@ class Produto {
 // ============================================================
 
 class AppStorage {
-  static const String movimentacoesKey = 'movimentacoes';
-  static const String produtosKey = 'produtos';
+  static const produtosKey = 'produtos';
+  static const movimentacoesKey = 'movimentacoes';
+
+  static Future<List<Produto>> carregarProdutos() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    final dados = prefs.getStringList(produtosKey) ?? [];
+
+    return dados
+        .map(
+          (item) => Produto.fromMap(
+            jsonDecode(item) as Map<String, dynamic>,
+          ),
+        )
+        .toList();
+  }
+
+  static Future<void> salvarProdutos(List<Produto> produtos) async {
+    final prefs = await SharedPreferences.getInstance();
+
+    await prefs.setStringList(
+      produtosKey,
+      produtos.map((produto) => jsonEncode(produto.toMap())).toList(),
+    );
+  }
 
   static Future<List<Movimentacao>> carregarMovimentacoes() async {
     final prefs = await SharedPreferences.getInstance();
@@ -117,8 +163,9 @@ class AppStorage {
 
     return dados
         .map(
-          (item) =>
-              Movimentacao.fromMap(jsonDecode(item) as Map<String, dynamic>),
+          (item) => Movimentacao.fromMap(
+            jsonDecode(item) as Map<String, dynamic>,
+          ),
         )
         .toList();
   }
@@ -128,31 +175,12 @@ class AppStorage {
   ) async {
     final prefs = await SharedPreferences.getInstance();
 
-    final dados = movimentacoes
-        .map((item) => jsonEncode(item.toMap()))
-        .toList();
-
-    await prefs.setStringList(movimentacoesKey, dados);
-  }
-
-  static Future<List<Produto>> carregarProdutos() async {
-    final prefs = await SharedPreferences.getInstance();
-
-    final dados = prefs.getStringList(produtosKey) ?? [];
-
-    return dados
-        .map(
-          (item) => Produto.fromMap(jsonDecode(item) as Map<String, dynamic>),
-        )
-        .toList();
-  }
-
-  static Future<void> salvarProdutos(List<Produto> produtos) async {
-    final prefs = await SharedPreferences.getInstance();
-
-    final dados = produtos.map((item) => jsonEncode(item.toMap())).toList();
-
-    await prefs.setStringList(produtosKey, dados);
+    await prefs.setStringList(
+      movimentacoesKey,
+      movimentacoes
+          .map((movimentacao) => jsonEncode(movimentacao.toMap()))
+          .toList(),
+    );
   }
 }
 
@@ -170,8 +198,8 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   int paginaAtual = 0;
 
-  List<Movimentacao> movimentacoes = [];
   List<Produto> produtos = [];
+  List<Movimentacao> movimentacoes = [];
 
   bool carregando = true;
 
@@ -182,31 +210,43 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> carregarDados() async {
-    final movimentos = await AppStorage.carregarMovimentacoes();
-    final estoque = await AppStorage.carregarProdutos();
+    final produtosSalvos = await AppStorage.carregarProdutos();
+    final movimentacoesSalvas =
+        await AppStorage.carregarMovimentacoes();
 
     if (!mounted) return;
 
     setState(() {
-      movimentacoes = movimentos;
-      produtos = estoque;
+      produtos = produtosSalvos;
+      movimentacoes = movimentacoesSalvas;
       carregando = false;
     });
   }
 
-  double get totalEntradas {
+  double get entradas {
     return movimentacoes
         .where((item) => item.tipo == 'entrada')
         .fold(0, (total, item) => total + item.valor);
   }
 
-  double get totalSaidas {
+  double get saidas {
     return movimentacoes
         .where((item) => item.tipo == 'saida')
         .fold(0, (total, item) => total + item.valor);
   }
 
-  double get saldo => totalEntradas - totalSaidas;
+  double get saldo => entradas - saidas;
+
+  double get valorEstoque {
+    return produtos.fold(
+      0,
+      (total, produto) => total + produto.valorEstoque,
+    );
+  }
+
+  int get produtosEstoqueBaixo {
+    return produtos.where((produto) => produto.estoqueBaixo).length;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -220,11 +260,11 @@ class _HomePageState extends State<HomePage> {
 
     final paginas = [
       DashboardPage(
-        entradas: totalEntradas,
-        saidas: totalSaidas,
+        entradas: entradas,
+        saidas: saidas,
         saldo: saldo,
-        produtos: produtos,
-        movimentacoes: movimentacoes,
+        valorEstoque: valorEstoque,
+        produtosEstoqueBaixo: produtosEstoqueBaixo,
       ),
       EstoquePage(
         produtos: produtos,
@@ -235,11 +275,11 @@ class _HomePageState extends State<HomePage> {
         onAlterar: carregarDados,
       ),
       RelatoriosPage(
-        entradas: totalEntradas,
-        saidas: totalSaidas,
+        entradas: entradas,
+        saidas: saidas,
         saldo: saldo,
+        valorEstoque: valorEstoque,
         produtos: produtos,
-        movimentacoes: movimentacoes,
       ),
     ];
 
@@ -247,9 +287,10 @@ class _HomePageState extends State<HomePage> {
       appBar: AppBar(
         title: const Text(
           'Controle Financeiro',
-          style: TextStyle(fontWeight: FontWeight.bold),
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+          ),
         ),
-        centerTitle: false,
       ),
       body: paginas[paginaAtual],
       bottomNavigationBar: NavigationBar(
@@ -271,7 +312,7 @@ class _HomePageState extends State<HomePage> {
             label: 'Estoque',
           ),
           NavigationDestination(
-            icon: Icon(Icons.attach_money),
+            icon: Icon(Icons.account_balance_wallet_outlined),
             selectedIcon: Icon(Icons.account_balance_wallet),
             label: 'Financeiro',
           ),
@@ -294,16 +335,16 @@ class DashboardPage extends StatelessWidget {
   final double entradas;
   final double saidas;
   final double saldo;
-  final List<Produto> produtos;
-  final List<Movimentacao> movimentacoes;
+  final double valorEstoque;
+  final int produtosEstoqueBaixo;
 
   const DashboardPage({
     super.key,
     required this.entradas,
     required this.saidas,
     required this.saldo,
-    required this.produtos,
-    required this.movimentacoes,
+    required this.valorEstoque,
+    required this.produtosEstoqueBaixo,
   });
 
   String moeda(double valor) {
@@ -312,114 +353,96 @@ class DashboardPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return RefreshIndicator(
-      onRefresh: () async {},
-      child: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          const Text(
-            'Visão geral',
-            style: TextStyle(
-              fontSize: 26,
-              fontWeight: FontWeight.bold,
-            ),
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        const Text(
+          'Dashboard',
+          style: TextStyle(
+            fontSize: 28,
+            fontWeight: FontWeight.bold,
           ),
-
-          const SizedBox(height: 6),
-
-          Text(
-            'Resumo financeiro e do estoque',
-            style: TextStyle(
-              color: Colors.grey.shade700,
-            ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          'Resumo da sua operação',
+          style: TextStyle(
+            color: Colors.grey.shade700,
           ),
+        ),
+        const SizedBox(height: 20),
 
-          const SizedBox(height: 20),
+        _ResumoCard(
+          titulo: 'Saldo',
+          valor: moeda(saldo),
+          icone: Icons.account_balance_wallet,
+        ),
 
-          _CardResumo(
-            titulo: 'Saldo atual',
-            valor: moeda(saldo),
-            icone: Icons.account_balance_wallet,
-          ),
+        const SizedBox(height: 12),
 
-          const SizedBox(height: 12),
-
-          Row(
-            children: [
-              Expanded(
-                child: _CardResumo(
-                  titulo: 'Entradas',
-                  valor: moeda(entradas),
-                  icone: Icons.arrow_downward,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _CardResumo(
-                  titulo: 'Saídas',
-                  valor: moeda(saidas),
-                  icone: Icons.arrow_upward,
-                ),
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 20),
-
-          _InfoCard(
-            titulo: 'Estoque',
-            icone: Icons.inventory_2,
-            valor: '${produtos.length} produtos cadastrados',
-          ),
-
-          const SizedBox(height: 12),
-
-          _InfoCard(
-            titulo: 'Movimentações',
-            icone: Icons.receipt_long,
-            valor: '${movimentacoes.length} registros',
-          ),
-
-          const SizedBox(height: 20),
-
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(18),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Aplicativo',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    'Sistema preparado para controle financeiro, '
-                    'gestão de estoque e relatórios.',
-                    style: TextStyle(
-                      color: Colors.grey.shade700,
-                      height: 1.5,
-                    ),
-                  ),
-                ],
+        Row(
+          children: [
+            Expanded(
+              child: _ResumoCard(
+                titulo: 'Entradas',
+                valor: moeda(entradas),
+                icone: Icons.arrow_downward,
               ),
             ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _ResumoCard(
+                titulo: 'Saídas',
+                valor: moeda(saidas),
+                icone: Icons.arrow_upward,
+              ),
+            ),
+          ],
+        ),
+
+        const SizedBox(height: 12),
+
+        _ResumoCard(
+          titulo: 'Valor do estoque',
+          valor: moeda(valorEstoque),
+          icone: Icons.inventory_2,
+        ),
+
+        const SizedBox(height: 12),
+
+        Card(
+          child: ListTile(
+            leading: CircleAvatar(
+              child: Icon(
+                produtosEstoqueBaixo > 0
+                    ? Icons.warning
+                    : Icons.check_circle,
+              ),
+            ),
+            title: const Text(
+              'Estoque baixo',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            subtitle: Text(
+              produtosEstoqueBaixo == 0
+                  ? 'Nenhum produto abaixo do mínimo'
+                  : '$produtosEstoqueBaixo produto(s) precisam de reposição',
+            ),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
 
-class _CardResumo extends StatelessWidget {
+class _ResumoCard extends StatelessWidget {
   final String titulo;
   final String valor;
   final IconData icone;
 
-  const _CardResumo({
+  const _ResumoCard({
     required this.titulo,
     required this.valor,
     required this.icone,
@@ -456,36 +479,6 @@ class _CardResumo extends StatelessWidget {
   }
 }
 
-class _InfoCard extends StatelessWidget {
-  final String titulo;
-  final IconData icone;
-  final String valor;
-
-  const _InfoCard({
-    required this.titulo,
-    required this.icone,
-    required this.valor,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      child: ListTile(
-        leading: CircleAvatar(
-          child: Icon(icone),
-        ),
-        title: Text(
-          titulo,
-          style: const TextStyle(
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        subtitle: Text(valor),
-      ),
-    );
-  }
-}
-
 // ============================================================
 // ESTOQUE
 // ============================================================
@@ -505,53 +498,124 @@ class EstoquePage extends StatefulWidget {
 }
 
 class _EstoquePageState extends State<EstoquePage> {
-  Future<void> adicionarProduto() async {
-    final nomeController = TextEditingController();
-    final quantidadeController = TextEditingController();
-    final custoController = TextEditingController();
-    final vendaController = TextEditingController();
+  String busca = '';
+
+  List<Produto> get produtosFiltrados {
+    if (busca.trim().isEmpty) {
+      return widget.produtos;
+    }
+
+    final texto = busca.toLowerCase();
+
+    return widget.produtos.where((produto) {
+      return produto.nome.toLowerCase().contains(texto) ||
+          produto.sku.toLowerCase().contains(texto) ||
+          produto.categoria.toLowerCase().contains(texto);
+    }).toList();
+  }
+
+  Future<void> abrirProduto([Produto? produto]) async {
+    final nomeController =
+        TextEditingController(text: produto?.nome ?? '');
+    final skuController =
+        TextEditingController(text: produto?.sku ?? '');
+    final categoriaController =
+        TextEditingController(text: produto?.categoria ?? '');
+    final quantidadeController = TextEditingController(
+      text: produto?.quantidade.toString() ?? '0',
+    );
+    final minimoController = TextEditingController(
+      text: produto?.estoqueMinimo.toString() ?? '0',
+    );
+    final custoController = TextEditingController(
+      text: produto?.custo.toStringAsFixed(2) ?? '',
+    );
+    final vendaController = TextEditingController(
+      text: produto?.venda.toStringAsFixed(2) ?? '',
+    );
 
     final resultado = await showDialog<bool>(
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: const Text('Novo produto'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: nomeController,
-                  decoration: const InputDecoration(
-                    labelText: 'Nome do produto',
+          title: Text(
+            produto == null
+                ? 'Cadastrar produto'
+                : 'Editar produto',
+          ),
+          content: SizedBox(
+            width: 500,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: nomeController,
+                    decoration: const InputDecoration(
+                      labelText: 'Nome do produto',
+                      prefixIcon: Icon(Icons.inventory_2),
+                    ),
                   ),
-                ),
-                TextField(
-                  controller: quantidadeController,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: 'Quantidade',
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: skuController,
+                    decoration: const InputDecoration(
+                      labelText: 'Código / SKU',
+                      prefixIcon: Icon(Icons.qr_code),
+                    ),
                   ),
-                ),
-                TextField(
-                  controller: custoController,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: categoriaController,
+                    decoration: const InputDecoration(
+                      labelText: 'Categoria',
+                      prefixIcon: Icon(Icons.category),
+                    ),
                   ),
-                  decoration: const InputDecoration(
-                    labelText: 'Custo',
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: quantidadeController,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'Quantidade',
+                      prefixIcon: Icon(Icons.numbers),
+                    ),
                   ),
-                ),
-                TextField(
-                  controller: vendaController,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: minimoController,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'Estoque mínimo',
+                      prefixIcon: Icon(Icons.warning_amber),
+                    ),
                   ),
-                  decoration: const InputDecoration(
-                    labelText: 'Preço de venda',
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: custoController,
+                    keyboardType:
+                        const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: const InputDecoration(
+                      labelText: 'Custo',
+                      prefixText: 'R\$ ',
+                    ),
                   ),
-                ),
-              ],
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: vendaController,
+                    keyboardType:
+                        const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: const InputDecoration(
+                      labelText: 'Preço de venda',
+                      prefixText: 'R\$ ',
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
           actions: [
@@ -570,10 +634,24 @@ class _EstoquePageState extends State<EstoquePage> {
 
     if (resultado != true) return;
 
-    final produto = Produto(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
-      nome: nomeController.text.trim(),
-      quantidade: int.tryParse(quantidadeController.text) ?? 0,
+    final nome = nomeController.text.trim();
+
+    if (nome.isEmpty) {
+      return;
+    }
+
+    final novoProduto = Produto(
+      id: produto?.id ??
+          DateTime.now().millisecondsSinceEpoch.toString(),
+      sku: skuController.text.trim(),
+      nome: nome,
+      categoria: categoriaController.text.trim().isEmpty
+          ? 'Geral'
+          : categoriaController.text.trim(),
+      quantidade:
+          int.tryParse(quantidadeController.text) ?? 0,
+      estoqueMinimo:
+          int.tryParse(minimoController.text) ?? 0,
       custo: double.tryParse(
             custoController.text.replaceAll(',', '.'),
           ) ??
@@ -584,7 +662,52 @@ class _EstoquePageState extends State<EstoquePage> {
           0,
     );
 
-    final lista = [...widget.produtos, produto];
+    final lista = [...widget.produtos];
+
+    if (produto == null) {
+      lista.add(novoProduto);
+    } else {
+      final index =
+          lista.indexWhere((item) => item.id == produto.id);
+
+      if (index >= 0) {
+        lista[index] = novoProduto;
+      }
+    }
+
+    await AppStorage.salvarProdutos(lista);
+
+    widget.onAlterar();
+  }
+
+  Future<void> excluirProduto(Produto produto) async {
+    final confirmar = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Excluir produto?'),
+          content: Text(
+            'Deseja realmente excluir "${produto.nome}"?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Excluir'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmar != true) return;
+
+    final lista = widget.produtos
+        .where((item) => item.id != produto.id)
+        .toList();
 
     await AppStorage.salvarProdutos(lista);
 
@@ -593,10 +716,17 @@ class _EstoquePageState extends State<EstoquePage> {
 
   @override
   Widget build(BuildContext context) {
+    final lista = produtosFiltrados;
+
+    final valorTotal = widget.produtos.fold<double>(
+      0,
+      (total, produto) => total + produto.valorEstoque,
+    );
+
     return Scaffold(
       backgroundColor: Colors.transparent,
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: adicionarProduto,
+        onPressed: () => abrirProduto(),
         icon: const Icon(Icons.add),
         label: const Text('Produto'),
       ),
@@ -606,47 +736,114 @@ class _EstoquePageState extends State<EstoquePage> {
           const Text(
             'Estoque',
             style: TextStyle(
-              fontSize: 26,
+              fontSize: 28,
               fontWeight: FontWeight.bold,
             ),
           ),
+
+          const SizedBox(height: 6),
+
+          Text(
+            '${widget.produtos.length} produtos • '
+            'R\$ ${valorTotal.toStringAsFixed(2)} em estoque',
+            style: TextStyle(
+              color: Colors.grey.shade700,
+            ),
+          ),
+
           const SizedBox(height: 16),
-          if (widget.produtos.isEmpty)
-            const Card(
+
+          TextField(
+            onChanged: (valor) {
+              setState(() {
+                busca = valor;
+              });
+            },
+            decoration: InputDecoration(
+              hintText: 'Buscar produto, SKU ou categoria...',
+              prefixIcon: const Icon(Icons.search),
+              suffixIcon: busca.isNotEmpty
+                  ? IconButton(
+                      onPressed: () {
+                        setState(() {
+                          busca = '';
+                        });
+                      },
+                      icon: const Icon(Icons.clear),
+                    )
+                  : null,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 16),
+
+          if (lista.isEmpty)
+            Card(
               child: Padding(
-                padding: EdgeInsets.all(24),
+                padding: const EdgeInsets.all(30),
                 child: Center(
                   child: Text(
-                    'Nenhum produto cadastrado.',
-                  ),
-                ),
-              ),
-            )
-          else
-            ...widget.produtos.map(
-              (produto) => Card(
-                child: ListTile(
-                  leading: const CircleAvatar(
-                    child: Icon(Icons.inventory),
-                  ),
-                  title: Text(
-                    produto.nome,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  subtitle: Text(
-                    'Quantidade: ${produto.quantidade}',
-                  ),
-                  trailing: Text(
-                    'R\$ ${produto.venda.toStringAsFixed(2)}',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                    ),
+                    widget.produtos.isEmpty
+                        ? 'Nenhum produto cadastrado.'
+                        : 'Nenhum produto encontrado.',
                   ),
                 ),
               ),
             ),
+
+          ...lista.map(
+            (produto) => Card(
+              margin: const EdgeInsets.only(bottom: 10),
+              child: ListTile(
+                contentPadding: const EdgeInsets.all(12),
+                leading: CircleAvatar(
+                  child: Text(
+                    produto.quantidade.toString(),
+                  ),
+                ),
+                title: Text(
+                  produto.nome,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                subtitle: Padding(
+                  padding: const EdgeInsets.only(top: 5),
+                  child: Text(
+                    'SKU: ${produto.sku.isEmpty ? '-' : produto.sku}\n'
+                    'Categoria: ${produto.categoria}\n'
+                    'Custo: R\$ ${produto.custo.toStringAsFixed(2)} • '
+                    'Venda: R\$ ${produto.venda.toStringAsFixed(2)}',
+                  ),
+                ),
+                isThreeLine: true,
+                trailing: PopupMenuButton<String>(
+                  onSelected: (opcao) {
+                    if (opcao == 'editar') {
+                      abrirProduto(produto);
+                    }
+
+                    if (opcao == 'excluir') {
+                      excluirProduto(produto);
+                    }
+                  },
+                  itemBuilder: (context) => const [
+                    PopupMenuItem(
+                      value: 'editar',
+                      child: Text('Editar'),
+                    ),
+                    PopupMenuItem(
+                      value: 'excluir',
+                      child: Text('Excluir'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -681,7 +878,9 @@ class _FinanceiroPageState extends State<FinanceiroPage> {
       builder: (context) {
         return AlertDialog(
           title: Text(
-            tipo == 'entrada' ? 'Nova entrada' : 'Nova saída',
+            tipo == 'entrada'
+                ? 'Nova entrada'
+                : 'Nova saída',
           ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
@@ -694,7 +893,8 @@ class _FinanceiroPageState extends State<FinanceiroPage> {
               ),
               TextField(
                 controller: valorController,
-                keyboardType: const TextInputType.numberWithOptions(
+                keyboardType:
+                    const TextInputType.numberWithOptions(
                   decimal: true,
                 ),
                 decoration: const InputDecoration(
@@ -735,7 +935,10 @@ class _FinanceiroPageState extends State<FinanceiroPage> {
       data: DateTime.now(),
     );
 
-    final lista = [...widget.movimentacoes, movimentacao];
+    final lista = [
+      ...widget.movimentacoes,
+      movimentacao,
+    ];
 
     await AppStorage.salvarMovimentacoes(lista);
 
@@ -752,7 +955,7 @@ class _FinanceiroPageState extends State<FinanceiroPage> {
           const Text(
             'Financeiro',
             style: TextStyle(
-              fontSize: 26,
+              fontSize: 28,
               fontWeight: FontWeight.bold,
             ),
           ),
@@ -763,7 +966,8 @@ class _FinanceiroPageState extends State<FinanceiroPage> {
             children: [
               Expanded(
                 child: FilledButton.icon(
-                  onPressed: () => adicionarMovimentacao('entrada'),
+                  onPressed: () =>
+                      adicionarMovimentacao('entrada'),
                   icon: const Icon(Icons.arrow_downward),
                   label: const Text('Entrada'),
                 ),
@@ -771,7 +975,8 @@ class _FinanceiroPageState extends State<FinanceiroPage> {
               const SizedBox(width: 10),
               Expanded(
                 child: OutlinedButton.icon(
-                  onPressed: () => adicionarMovimentacao('saida'),
+                  onPressed: () =>
+                      adicionarMovimentacao('saida'),
                   icon: const Icon(Icons.arrow_upward),
                   label: const Text('Saída'),
                 ),
@@ -791,38 +996,38 @@ class _FinanceiroPageState extends State<FinanceiroPage> {
                   ),
                 ),
               ),
-            )
-          else
-            ...widget.movimentacoes.reversed.map(
-              (item) => Card(
-                child: ListTile(
-                  leading: CircleAvatar(
-                    child: Icon(
-                      item.tipo == 'entrada'
-                          ? Icons.arrow_downward
-                          : Icons.arrow_upward,
-                    ),
+            ),
+
+          ...widget.movimentacoes.reversed.map(
+            (item) => Card(
+              child: ListTile(
+                leading: CircleAvatar(
+                  child: Icon(
+                    item.tipo == 'entrada'
+                        ? Icons.arrow_downward
+                        : Icons.arrow_upward,
                   ),
-                  title: Text(
-                    item.descricao.isEmpty
-                        ? 'Movimentação'
-                        : item.descricao,
-                  ),
-                  subtitle: Text(
-                    '${item.data.day.toString().padLeft(2, '0')}/'
-                    '${item.data.month.toString().padLeft(2, '0')}/'
-                    '${item.data.year}',
-                  ),
-                  trailing: Text(
-                    '${item.tipo == 'entrada' ? '+' : '-'} '
-                    'R\$ ${item.valor.toStringAsFixed(2)}',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                    ),
+                ),
+                title: Text(
+                  item.descricao.isEmpty
+                      ? 'Movimentação'
+                      : item.descricao,
+                ),
+                subtitle: Text(
+                  '${item.data.day.toString().padLeft(2, '0')}/'
+                  '${item.data.month.toString().padLeft(2, '0')}/'
+                  '${item.data.year}',
+                ),
+                trailing: Text(
+                  '${item.tipo == 'entrada' ? '+' : '-'} '
+                  'R\$ ${item.valor.toStringAsFixed(2)}',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
               ),
             ),
+          ),
         ],
       ),
     );
@@ -837,27 +1042,30 @@ class RelatoriosPage extends StatelessWidget {
   final double entradas;
   final double saidas;
   final double saldo;
+  final double valorEstoque;
   final List<Produto> produtos;
-  final List<Movimentacao> movimentacoes;
 
   const RelatoriosPage({
     super.key,
     required this.entradas,
     required this.saidas,
     required this.saldo,
+    required this.valorEstoque,
     required this.produtos,
-    required this.movimentacoes,
   });
 
   @override
   Widget build(BuildContext context) {
+    final estoqueBaixo =
+        produtos.where((produto) => produto.estoqueBaixo).length;
+
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
         const Text(
           'Relatórios',
           style: TextStyle(
-            fontSize: 26,
+            fontSize: 28,
             fontWeight: FontWeight.bold,
           ),
         ),
@@ -868,7 +1076,8 @@ class RelatoriosPage extends StatelessWidget {
           child: Padding(
             padding: const EdgeInsets.all(18),
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment:
+                  CrossAxisAlignment.start,
               children: [
                 const Text(
                   'Resumo financeiro',
@@ -896,20 +1105,30 @@ class RelatoriosPage extends StatelessWidget {
 
         Card(
           child: ListTile(
-            leading: const Icon(Icons.inventory),
-            title: const Text('Produtos'),
+            leading: const Icon(Icons.inventory_2),
+            title: const Text('Valor do estoque'),
             subtitle: Text(
-              '${produtos.length} produtos cadastrados',
+              'R\$ ${valorEstoque.toStringAsFixed(2)}',
             ),
           ),
         ),
 
         Card(
           child: ListTile(
-            leading: const Icon(Icons.receipt_long),
-            title: const Text('Movimentações'),
+            leading: const Icon(Icons.inventory),
+            title: const Text('Produtos cadastrados'),
             subtitle: Text(
-              '${movimentacoes.length} movimentações registradas',
+              '${produtos.length} produtos',
+            ),
+          ),
+        ),
+
+        Card(
+          child: ListTile(
+            leading: const Icon(Icons.warning_amber),
+            title: const Text('Estoque baixo'),
+            subtitle: Text(
+              '$estoqueBaixo produto(s) abaixo do mínimo',
             ),
           ),
         ),
