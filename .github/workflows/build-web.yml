@@ -17,11 +17,6 @@ jobs:
       - name: Baixar projeto
         uses: actions/checkout@v4
 
-      - name: Ver estrutura do projeto
-        run: |
-          echo "Arquivos encontrados:"
-          find . -maxdepth 3 -type f | sort | head -200
-
       - name: Configurar Flutter
         uses: subosito/flutter-action@v2
         with:
@@ -30,16 +25,30 @@ jobs:
       - name: Localizar projeto Flutter
         run: |
           PROJECT_DIR=$(find . -name pubspec.yaml -not -path './.git/*' -printf '%h\n' | head -1)
-          
+
           if [ -z "$PROJECT_DIR" ]; then
             echo "ERRO: pubspec.yaml não encontrado."
             exit 1
           fi
 
-          echo "Projeto Flutter encontrado em: $PROJECT_DIR"
-          echo "PROJECT_DIR=$PROJECT_DIR" >> $GITHUB_ENV
+          echo "Projeto encontrado em: $PROJECT_DIR"
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+
+      - name: Corrigir sintaxe do Dart
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          echo "Corrigindo main.dart..."
+
+          sed -i 's/colorScheme: \.fromSeed(seedColor: Colors\.deepPurple),/colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),/g' lib/main.dart
+
+          sed -i 's/mainAxisAlignment: \.center,/mainAxisAlignment: MainAxisAlignment.center,/g' lib/main.dart
+
+          echo "Verificando erros antigos:"
+          grep -n "colorScheme:" lib/main.dart || true
+          grep -n "mainAxisAlignment:" lib/main.dart || true
 
       - name: Ativar Web
+        working-directory: ${{ env.PROJECT_DIR }}
         run: flutter config --enable-web
 
       - name: Instalar dependências
@@ -52,7 +61,7 @@ jobs:
 
       - name: Gerar aplicativo Web
         working-directory: ${{ env.PROJECT_DIR }}
-        run: flutter build web --release
+        run: flutter build web --release --no-wasm-dry-run
 
       - name: Publicar Web
         uses: peaceiris/actions-gh-pages@v4
