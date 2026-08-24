@@ -22,7 +22,7 @@ jobs:
           cache: true
 
       - name: Criar estrutura Flutter
-        run: flutter create --platforms=android,web .
+        run: flutter create --project-name controle_financeiro --platforms=android,web .
 
       - name: Instalar dependências
         run: flutter pub get
