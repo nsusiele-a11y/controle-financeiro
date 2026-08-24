@@ -17,25 +17,45 @@ jobs:
       - name: Baixar projeto
         uses: actions/checkout@v4
 
+      - name: Ver estrutura do projeto
+        run: |
+          echo "Arquivos encontrados:"
+          find . -maxdepth 3 -type f | sort | head -200
+
       - name: Configurar Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: stable
 
+      - name: Localizar projeto Flutter
+        run: |
+          PROJECT_DIR=$(find . -name pubspec.yaml -not -path './.git/*' -printf '%h\n' | head -1)
+          
+          if [ -z "$PROJECT_DIR" ]; then
+            echo "ERRO: pubspec.yaml não encontrado."
+            exit 1
+          fi
+
+          echo "Projeto Flutter encontrado em: $PROJECT_DIR"
+          echo "PROJECT_DIR=$PROJECT_DIR" >> $GITHUB_ENV
+
       - name: Ativar Web
         run: flutter config --enable-web
 
       - name: Instalar dependências
+        working-directory: ${{ env.PROJECT_DIR }}
         run: flutter pub get
 
-      - name: Criar estrutura Web
+      - name: Criar suporte Web
+        working-directory: ${{ env.PROJECT_DIR }}
         run: flutter create . --platforms web
 
       - name: Gerar aplicativo Web
+        working-directory: ${{ env.PROJECT_DIR }}
         run: flutter build web --release
 
-      - name: Publicar no GitHub Pages
+      - name: Publicar Web
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./build/web
+          publish_dir: ${{ env.PROJECT_DIR }}/build/web
