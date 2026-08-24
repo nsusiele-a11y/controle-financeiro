@@ -1,48 +1,40 @@
-name: Gerar APK
+name: Gerar APK Android
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Baixar codigo
+      - name: Baixar código
         uses: actions/checkout@v4
 
       - name: Configurar Flutter
         uses: subosito/flutter-action@v2
         with:
+          flutter-version: "3.35.0"
           channel: stable
+          cache: true
 
-      - name: Criar projeto Flutter
-        run: |
-          mkdir /tmp/flutter_project
-          cd /tmp/flutter_project
-          flutter create .
+      - name: Criar estrutura Flutter
+        run: flutter create --platforms=android,web .
 
-      - name: Copiar aplicativo
-        run: |
-          cp "$GITHUB_WORKSPACE/lib/main.dart" /tmp/flutter_project/lib/main.dart
-
-      - name: Configurar dependencias
-        working-directory: /tmp/flutter_project
-        run: |
-          flutter pub add sqflite
-          flutter pub add path
-          flutter pub add intl
-
-      - name: Instalar dependencias
-        working-directory: /tmp/flutter_project
+      - name: Instalar dependências
         run: flutter pub get
 
+      - name: Analisar projeto
+        run: flutter analyze
+
       - name: Gerar APK
-        working-directory: /tmp/flutter_project
         run: flutter build apk --release
 
       - name: Salvar APK
         uses: actions/upload-artifact@v4
         with:
           name: controle-financeiro-apk
-          path: /tmp/flutter_project/build/app/outputs/flutter-apk/app-release.apk
+          path: build/app/outputs/flutter-apk/app-release.apk
