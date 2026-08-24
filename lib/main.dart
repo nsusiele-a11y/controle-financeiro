@@ -15,7 +15,7 @@ class ControleFinanceiroApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Controle Financeiro',
+      title: 'Meu Controle',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         useMaterial3: true,
@@ -26,6 +26,10 @@ class ControleFinanceiroApp extends StatelessWidget {
     );
   }
 }
+
+// ============================================================
+// BANCO DE DADOS
+// ============================================================
 
 class DatabaseHelper {
   DatabaseHelper._();
@@ -48,24 +52,51 @@ class DatabaseHelper {
 
     _database = await openDatabase(
       path,
-      version: 1,
+      version: 2,
       onCreate: (db, version) async {
-        await db.execute('''
-          CREATE TABLE movimentacoes (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            tipo TEXT NOT NULL,
-            categoria TEXT NOT NULL,
-            valor REAL NOT NULL,
-            data TEXT NOT NULL
-          )
-        ''');
+        await _criarTabelas(db);
+      },
+      onUpgrade: (db, oldVersion, newVersion) async {
+        if (oldVersion < 2) {
+          await db.execute('''
+            CREATE TABLE IF NOT EXISTS estoque (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              nome TEXT NOT NULL,
+              quantidade INTEGER NOT NULL,
+              precoCompra REAL NOT NULL,
+              precoVenda REAL NOT NULL
+            )
+          ''');
+        }
       },
     );
 
     return _database!;
   }
 
-  Future<int> inserir({
+  Future<void> _criarTabelas(Database db) async {
+    await db.execute('''
+      CREATE TABLE movimentacoes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        tipo TEXT NOT NULL,
+        categoria TEXT NOT NULL,
+        valor REAL NOT NULL,
+        data TEXT NOT NULL
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE estoque (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nome TEXT NOT NULL,
+        quantidade INTEGER NOT NULL,
+        precoCompra REAL NOT NULL,
+        precoVenda REAL NOT NULL
+      )
+    ''');
+  }
+
+  Future<int> adicionarMovimentacao({
     required String tipo,
     required String categoria,
     required double valor,
@@ -84,29 +115,20 @@ class DatabaseHelper {
     );
   }
 
-  Future<List<Map<String, dynamic>>> buscarTodos() async {
+  Future<List<Map<String, dynamic>>> buscarMovimentacoes({
+    String? data,
+  }) async {
     final db = await database;
 
     return db.query(
       'movimentacoes',
+      where: data == null ? null : 'data = ?',
+      whereArgs: data == null ? null : [data],
       orderBy: 'data DESC, id DESC',
     );
   }
 
-  Future<List<Map<String, dynamic>>> buscarPorData(
-    String data,
-  ) async {
-    final db = await database;
-
-    return db.query(
-      'movimentacoes',
-      where: 'data = ?',
-      whereArgs: [data],
-      orderBy: 'id DESC',
-    );
-  }
-
-  Future<int> excluir(int id) async {
+  Future<int> excluirMovimentacao(int id) async {
     final db = await database;
 
     return db.delete(
@@ -115,7 +137,125 @@ class DatabaseHelper {
       whereArgs: [id],
     );
   }
+
+  // ---------------- ESTOQUE ----------------
+
+  Future<List<Map<String, dynamic>>> buscarEstoque() async {
+    final db = await database;
+
+    return db.query(
+      'estoque',
+      orderBy: 'nome ASC',
+    );
+  }
+
+  Future<int> adicionarEstoque({
+    required String nome,
+    required int quantidade,
+    required double precoCompra,
+    required double precoVenda,
+  }) async {
+    final db = await database;
+
+    return db.insert(
+      'estoque',
+      {
+        'nome': nome,
+        'quantidade': quantidade,
+        'precoCompra': precoCompra,
+        'precoVenda': precoVenda,
+      },
+    );
+  }
+
+  Future<int> atualizarEstoque({
+    required int id,
+    required String nome,
+    required int quantidade,
+    required double precoCompra,
+    required double precoVenda,
+  }) async {
+    final db = await database;
+
+    return db.update(
+      'estoque',
+      {
+        'nome': nome,
+        'quantidade': quantidade,
+        'precoCompra': precoCompra,
+        'precoVenda': precoVenda,
+      },
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  Future<int> excluirEstoque(int id) async {
+    final db = await database;
+
+    return db.delete(
+      'estoque',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  Future<void> diminuirEstoque(
+    int id,
+    int quantidade,
+  ) async {
+    final db = await database;
+
+    final resultado = await db.query(
+      'estoque',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+
+    if (resultado.isEmpty) return;
+
+    final atual =
+        (resultado.first['quantidade'] as num).toInt();
+
+    final novaQuantidade =
+        (atual - quantidade).clamp(0, 999999);
+
+    await db.update(
+      'estoque',
+      {
+        'quantidade': novaQuantidade,
+      },
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
 }
+
+// ============================================================
+// FUNÇÕES
+// ============================================================
+
+final moeda = NumberFormat.currency(
+  locale: 'pt_BR',
+  symbol: 'R\$',
+);
+
+final formatoData = DateFormat('dd/MM/yyyy');
+
+final formatoBanco = DateFormat('yyyy-MM-dd');
+
+double converterValor(String valor) {
+  return double.tryParse(
+        valor
+            .replaceAll('.', '')
+            .replaceAll(',', '.'),
+      ) ??
+      0;
+}
+
+// ============================================================
+// HOME
+// ============================================================
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -125,101 +265,65 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  static const double valorCliente = 120.0;
-  static const double valorManutencao = 80.0;
-
-  int clientes = 0;
-  int manutencoes = 0;
-  double gastos = 0;
+  int pagina = 0;
 
   DateTime dataSelecionada = DateTime.now();
 
-  final DateFormat formatoData = DateFormat('yyyy-MM-dd');
-  final DateFormat formatoExibicao = DateFormat('dd/MM/yyyy');
+  final servicos = const [
+    {
+      'nome': 'Cílios normal',
+      'valor': 120.0,
+      'icone': Icons.remove_red_eye,
+    },
+    {
+      'nome': 'Fox',
+      'valor': 150.0,
+      'icone': Icons.auto_awesome,
+    },
+    {
+      'nome': 'Sobrancelha',
+      'valor': 30.0,
+      'icone': Icons.face,
+    },
+    {
+      'nome': 'Manutenção',
+      'valor': 80.0,
+      'icone': Icons.build,
+    },
+  ];
 
-  double get ganhos {
-    return (clientes * valorCliente) +
-        (manutencoes * valorManutencao);
-  }
+  Future<void> registrarServico(
+    String nome,
+    double valor,
+  ) async {
+    await DatabaseHelper.instance.adicionarMovimentacao(
+      tipo: 'ganho',
+      categoria: nome,
+      valor: valor,
+      data: formatoBanco.format(dataSelecionada),
+    );
 
-  double get lucro {
-    return ganhos - gastos;
-  }
-
-  String moeda(double valor) {
-    return NumberFormat.currency(
-      locale: 'pt_BR',
-      symbol: 'R\$',
-    ).format(valor);
-  }
-
-  Future<void> carregarDia() async {
-    final data = formatoData.format(dataSelecionada);
-
-    final registros =
-        await DatabaseHelper.instance.buscarPorData(data);
-
-    int novosClientes = 0;
-    int novasManutencoes = 0;
-    double novosGastos = 0;
-
-    for (final registro in registros) {
-      final tipo = registro['tipo'];
-      final categoria = registro['categoria'];
-      final valor = (registro['valor'] as num).toDouble();
-
-      if (tipo == 'ganho' && categoria == 'Cliente') {
-        novosClientes++;
-      }
-
-      if (tipo == 'ganho' && categoria == 'Manutenção') {
-        novasManutencoes++;
-      }
-
-      if (tipo == 'gasto') {
-        novosGastos += valor;
-      }
-    }
+    setState(() {});
 
     if (!mounted) return;
 
-    setState(() {
-      clientes = novosClientes;
-      manutencoes = novasManutencoes;
-      gastos = novosGastos;
-    });
-  }
-
-  Future<void> adicionarCliente() async {
-    await DatabaseHelper.instance.inserir(
-      tipo: 'ganho',
-      categoria: 'Cliente',
-      valor: valorCliente,
-      data: formatoData.format(dataSelecionada),
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          '$nome registrado: ${moeda.format(valor)}',
+        ),
+      ),
     );
-
-    await carregarDia();
   }
 
-  Future<void> adicionarManutencao() async {
-    await DatabaseHelper.instance.inserir(
-      tipo: 'ganho',
-      categoria: 'Manutenção',
-      valor: valorManutencao,
-      data: formatoData.format(dataSelecionada),
-    );
-
-    await carregarDia();
-  }
-
-  Future<void> adicionarGasto() async {
+  Future<void> outroGanho() async {
     final controller = TextEditingController();
 
     final valor = await showDialog<double>(
       context: context,
-      builder: (dialogContext) {
+      builder: (context) {
         return AlertDialog(
-          title: const Text('Adicionar gasto'),
+          title: const Text('Outro ganho'),
           content: TextField(
             controller: controller,
             keyboardType:
@@ -229,26 +333,22 @@ class _HomePageState extends State<HomePage> {
             decoration: const InputDecoration(
               labelText: 'Valor',
               prefixText: 'R\$ ',
-              hintText: 'Ex.: 50,00',
             ),
           ),
           actions: [
             TextButton(
               onPressed: () {
-                Navigator.pop(dialogContext);
+                Navigator.pop(context);
               },
               child: const Text('Cancelar'),
             ),
             FilledButton(
               onPressed: () {
-                final texto = controller.text
-                    .replaceAll('.', '')
-                    .replaceAll(',', '.');
+                final valor =
+                    converterValor(controller.text);
 
-                final valor = double.tryParse(texto);
-
-                if (valor != null && valor > 0) {
-                  Navigator.pop(dialogContext, valor);
+                if (valor > 0) {
+                  Navigator.pop(context, valor);
                 }
               },
               child: const Text('Adicionar'),
@@ -262,14 +362,96 @@ class _HomePageState extends State<HomePage> {
 
     if (valor == null) return;
 
-    await DatabaseHelper.instance.inserir(
-      tipo: 'gasto',
-      categoria: 'Gasto',
+    await DatabaseHelper.instance.adicionarMovimentacao(
+      tipo: 'ganho',
+      categoria: 'Outro ganho',
       valor: valor,
-      data: formatoData.format(dataSelecionada),
+      data: formatoBanco.format(dataSelecionada),
     );
 
-    await carregarDia();
+    setState(() {});
+  }
+
+  Future<void> adicionarGasto() async {
+    final categoriaController =
+        TextEditingController();
+
+    final valorController =
+        TextEditingController();
+
+    final resultado = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Adicionar gasto'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: categoriaController,
+                decoration: const InputDecoration(
+                  labelText: 'Categoria',
+                  hintText: 'Ex.: Material',
+                ),
+              ),
+              TextField(
+                controller: valorController,
+                keyboardType:
+                    const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                decoration: const InputDecoration(
+                  labelText: 'Valor',
+                  prefixText: 'R\$ ',
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context, false);
+              },
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              onPressed: () async {
+                final categoria =
+                    categoriaController.text.trim();
+
+                final valor =
+                    converterValor(valorController.text);
+
+                if (categoria.isEmpty || valor <= 0) {
+                  return;
+                }
+
+                await DatabaseHelper.instance
+                    .adicionarMovimentacao(
+                  tipo: 'gasto',
+                  categoria: categoria,
+                  valor: valor,
+                  data:
+                      formatoBanco.format(dataSelecionada),
+                );
+
+                if (context.mounted) {
+                  Navigator.pop(context, true);
+                }
+              },
+              child: const Text('Salvar'),
+            ),
+          ],
+        );
+      },
+    );
+
+    categoriaController.dispose();
+    valorController.dispose();
+
+    if (resultado == true) {
+      setState(() {});
+    }
   }
 
   Future<void> selecionarData() async {
@@ -284,337 +466,331 @@ class _HomePageState extends State<HomePage> {
       setState(() {
         dataSelecionada = data;
       });
-
-      await carregarDia();
     }
   }
 
-  Future<void> diminuirCliente() async {
-    if (clientes <= 0) return;
+  @override
+  Widget build(BuildContext context) {
+    final paginas = [
+      DashboardPage(
+        data: dataSelecionada,
+        servicos: servicos,
+        selecionarData: selecionarData,
+        registrarServico: registrarServico,
+        outroGanho: outroGanho,
+        adicionarGasto: adicionarGasto,
+      ),
+      const EstoquePage(),
+      const HistoricoPage(),
+    ];
 
-    await excluirUltimo('Cliente');
-  }
-
-  Future<void> diminuirManutencao() async {
-    if (manutencoes <= 0) return;
-
-    await excluirUltimo('Manutenção');
-  }
-
-  Future<void> excluirUltimo(String categoria) async {
-    final registros =
-        await DatabaseHelper.instance.buscarPorData(
-      formatoData.format(dataSelecionada),
-    );
-
-    final encontrados = registros
-        .where(
-          (registro) =>
-              registro['tipo'] == 'ganho' &&
-              registro['categoria'] == categoria,
-        )
-        .toList();
-
-    if (encontrados.isEmpty) return;
-
-    final id = encontrados.first['id'] as int;
-
-    await DatabaseHelper.instance.excluir(id);
-
-    await carregarDia();
-  }
-
-  Future<void> abrirHistorico() async {
-    await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => const HistoricoPage(),
+    return Scaffold(
+      body: SafeArea(
+        child: paginas[pagina],
+      ),
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: pagina,
+        onDestinationSelected: (index) {
+          setState(() {
+            pagina = index;
+          });
+        },
+        destinations: const [
+          NavigationDestination(
+            icon: Icon(Icons.dashboard_outlined),
+            selectedIcon: Icon(Icons.dashboard),
+            label: 'Resumo',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.inventory_2_outlined),
+            selectedIcon: Icon(Icons.inventory_2),
+            label: 'Estoque',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.history),
+            selectedIcon: Icon(Icons.history),
+            label: 'Histórico',
+          ),
+        ],
       ),
     );
+  }
+}
 
-    await carregarDia();
+// ============================================================
+// DASHBOARD
+// ============================================================
+
+class DashboardPage extends StatefulWidget {
+  final DateTime data;
+
+  final List<Map<String, Object>> servicos;
+
+  final VoidCallback selecionarData;
+
+  final Future<void> Function(
+    String,
+    double,
+  ) registrarServico;
+
+  final Future<void> Function() outroGanho;
+
+  final Future<void> Function() adicionarGasto;
+
+  const DashboardPage({
+    super.key,
+    required this.data,
+    required this.servicos,
+    required this.selecionarData,
+    required this.registrarServico,
+    required this.outroGanho,
+    required this.adicionarGasto,
+  });
+
+  @override
+  State<DashboardPage> createState() =>
+      _DashboardPageState();
+}
+
+class _DashboardPageState
+    extends State<DashboardPage> {
+  double ganhos = 0;
+  double gastos = 0;
+
+  int atendimentos = 0;
+
+  Future<void> carregar() async {
+    final registros =
+        await DatabaseHelper.instance.buscarMovimentacoes(
+      data: formatoBanco.format(widget.data),
+    );
+
+    double novosGanhos = 0;
+    double novosGastos = 0;
+
+    for (final registro in registros) {
+      final valor =
+          (registro['valor'] as num).toDouble();
+
+      if (registro['tipo'] == 'ganho') {
+        novosGanhos += valor;
+      } else {
+        novosGastos += valor;
+      }
+    }
+
+    if (!mounted) return;
+
+    setState(() {
+      ganhos = novosGanhos;
+      gastos = novosGastos;
+
+      atendimentos = registros
+          .where(
+            (registro) =>
+                registro['tipo'] == 'ganho',
+          )
+          .length;
+    });
   }
 
   @override
   void initState() {
     super.initState();
-    carregarDia();
+    carregar();
+  }
+
+  @override
+  void didUpdateWidget(
+    covariant DashboardPage oldWidget,
+  ) {
+    super.didUpdateWidget(oldWidget);
+    carregar();
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text(
-          'Controle Financeiro',
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        actions: [
-          IconButton(
-            tooltip: 'Histórico',
-            onPressed: abrirHistorico,
-            icon: const Icon(Icons.history),
-          ),
-        ],
-      ),
-      body: RefreshIndicator(
-        onRefresh: carregarDia,
-        child: ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            Card(
-              child: InkWell(
-                borderRadius: BorderRadius.circular(12),
-                onTap: selecionarData,
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.calendar_month),
-                      const SizedBox(width: 12),
-                      Column(
-                        crossAxisAlignment:
-                            CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Data selecionada',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.grey,
-                            ),
-                          ),
-                          Text(
-                            formatoExibicao
-                                .format(dataSelecionada),
-                            style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const Spacer(),
-                      const Icon(Icons.edit_calendar),
-                    ],
-                  ),
-                ),
-              ),
-            ),
+    final lucro = ganhos - gastos;
 
-            const SizedBox(height: 16),
-
-            AtendimentoCard(
-              titulo: 'Clientes novos',
-              valorUnitario: valorCliente,
-              quantidade: clientes,
-              icone: Icons.person_add,
-              onAdicionar: adicionarCliente,
-              onRemover: diminuirCliente,
-              moeda: moeda,
-            ),
-
-            const SizedBox(height: 12),
-
-            AtendimentoCard(
-              titulo: 'Manutenções',
-              valorUnitario: valorManutencao,
-              quantidade: manutencoes,
-              icone: Icons.build,
-              onAdicionar: adicionarManutencao,
-              onRemover: diminuirManutencao,
-              moeda: moeda,
-            ),
-
-            const SizedBox(height: 20),
-
-            Row(
-              children: [
-                Expanded(
-                  child: ResumoCard(
-                    titulo: 'Ganhos',
-                    valor: moeda(ganhos),
-                    icone: Icons.arrow_upward,
-                    positivo: true,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: ResumoCard(
-                    titulo: 'Gastos',
-                    valor: moeda(gastos),
-                    icone: Icons.arrow_downward,
-                    positivo: false,
-                  ),
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 12),
-
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  children: [
-                    const Icon(
-                      Icons.account_balance_wallet,
-                      size: 38,
-                    ),
-                    const SizedBox(height: 8),
-                    const Text(
-                      'Lucro do dia',
-                      style: TextStyle(fontSize: 15),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      moeda(lucro),
-                      style: TextStyle(
-                        fontSize: 30,
-                        fontWeight: FontWeight.bold,
-                        color: lucro >= 0
-                            ? Colors.green.shade700
-                            : Colors.red.shade700,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 16),
-
-            SizedBox(
-              height: 52,
-              child: FilledButton.icon(
-                onPressed: adicionarGasto,
-                icon: const Icon(
-                  Icons.remove_circle_outline,
-                ),
-                label: const Text(
-                  'Adicionar gasto',
-                  style: TextStyle(fontSize: 16),
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 12),
-
-            OutlinedButton.icon(
-              onPressed: abrirHistorico,
-              icon: const Icon(Icons.history),
-              label: const Text('Ver histórico'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class AtendimentoCard extends StatelessWidget {
-  final String titulo;
-  final double valorUnitario;
-  final int quantidade;
-  final IconData icone;
-  final VoidCallback onAdicionar;
-  final VoidCallback onRemover;
-  final String Function(double) moeda;
-
-  const AtendimentoCard({
-    super.key,
-    required this.titulo,
-    required this.valorUnitario,
-    required this.quantidade,
-    required this.icone,
-    required this.onAdicionar,
-    required this.onRemover,
-    required this.moeda,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final total = quantidade * valorUnitario;
-
-    return Card(
-      child: Padding(
+    return RefreshIndicator(
+      onRefresh: carregar,
+      child: ListView(
         padding: const EdgeInsets.all(16),
-        child: Row(
-          children: [
-            CircleAvatar(
-              radius: 25,
-              child: Icon(icone),
+        children: [
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'Meu Controle',
+                  style: TextStyle(
+                    fontSize: 28,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              IconButton(
+                onPressed: widget.selecionarData,
+                icon: const Icon(
+                  Icons.calendar_month,
+                ),
+              ),
+            ],
+          ),
+
+          Text(
+            formatoData.format(widget.data),
+            style: const TextStyle(
+              color: Colors.grey,
             ),
-            const SizedBox(width: 14),
-            Expanded(
+          ),
+
+          const SizedBox(height: 16),
+
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(20),
               child: Column(
-                crossAxisAlignment:
-                    CrossAxisAlignment.start,
                 children: [
+                  const Text(
+                    'Lucro do dia',
+                    style: TextStyle(
+                      fontSize: 16,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
                   Text(
-                    titulo,
-                    style: const TextStyle(
-                      fontSize: 17,
+                    moeda.format(lucro),
+                    style: TextStyle(
+                      fontSize: 32,
                       fontWeight: FontWeight.bold,
+                      color: lucro >= 0
+                          ? Colors.green
+                          : Colors.red,
                     ),
                   ),
+                  const SizedBox(height: 8),
                   Text(
-                    '${moeda(valorUnitario)} cada',
-                    style: const TextStyle(
-                      color: Colors.grey,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Total: ${moeda(total)}',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w600,
-                    ),
+                    '$atendimentos ganhos registrados',
                   ),
                 ],
               ),
             ),
-            IconButton(
-              onPressed: onRemover,
-              icon: const Icon(
-                Icons.remove_circle_outline,
+          ),
+
+          const SizedBox(height: 12),
+
+          Row(
+            children: [
+              Expanded(
+                child: _resumo(
+                  'Ganhos',
+                  ganhos,
+                  Icons.arrow_upward,
+                  Colors.green,
+                ),
               ),
-            ),
-            Text(
-              '$quantidade',
-              style: const TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
+              const SizedBox(width: 10),
+              Expanded(
+                child: _resumo(
+                  'Gastos',
+                  gastos,
+                  Icons.arrow_downward,
+                  Colors.red,
+                ),
               ),
+            ],
+          ),
+
+          const SizedBox(height: 24),
+
+          const Text(
+            'Registrar atendimento',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
             ),
-            IconButton(
-              onPressed: onAdicionar,
-              icon: const Icon(Icons.add_circle),
+          ),
+
+          const SizedBox(height: 8),
+
+          ...widget.servicos.map(
+            (servico) {
+              final nome =
+                  servico['nome'] as String;
+
+              final valor =
+                  servico['valor'] as double;
+
+              final icone =
+                  servico['icone'] as IconData;
+
+              return Card(
+                child: ListTile(
+                  leading: CircleAvatar(
+                    child: Icon(icone),
+                  ),
+                  title: Text(
+                    nome,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  subtitle:
+                      Text(moeda.format(valor)),
+                  trailing: const Icon(
+                    Icons.add_circle,
+                  ),
+                  onTap: () async {
+                    await widget.registrarServico(
+                      nome,
+                      valor,
+                    );
+
+                    await carregar();
+                  },
+                ),
+              );
+            },
+          ),
+
+          const SizedBox(height: 8),
+
+          OutlinedButton.icon(
+            onPressed: () async {
+              await widget.outroGanho();
+              await carregar();
+            },
+            icon: const Icon(Icons.add),
+            label: const Text(
+              'Outro ganho',
             ),
-          ],
-        ),
+          ),
+
+          const SizedBox(height: 12),
+
+          FilledButton.icon(
+            onPressed: () async {
+              await widget.adicionarGasto();
+              await carregar();
+            },
+            icon: const Icon(
+              Icons.remove_circle_outline,
+            ),
+            label: const Text(
+              'Adicionar gasto',
+            ),
+          ),
+        ],
       ),
     );
   }
-}
 
-class ResumoCard extends StatelessWidget {
-  final String titulo;
-  final String valor;
-  final IconData icone;
-  final bool positivo;
-
-  const ResumoCard({
-    super.key,
-    required this.titulo,
-    required this.valor,
-    required this.icone,
-    required this.positivo,
-  });
-
-  @override
-  Widget build(BuildContext context) {
+  Widget _resumo(
+    String titulo,
+    double valor,
+    IconData icone,
+    Color cor,
+  ) {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -622,19 +798,15 @@ class ResumoCard extends StatelessWidget {
           children: [
             Icon(
               icone,
-              size: 28,
-              color: positivo
-                  ? Colors.green
-                  : Colors.red,
+              color: cor,
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 6),
             Text(titulo),
-            const SizedBox(height: 4),
             Text(
-              valor,
+              moeda.format(valor),
               style: const TextStyle(
-                fontWeight: FontWeight.bold,
                 fontSize: 18,
+                fontWeight: FontWeight.bold,
               ),
             ),
           ],
@@ -643,6 +815,479 @@ class ResumoCard extends StatelessWidget {
     );
   }
 }
+
+// ============================================================
+// ESTOQUE
+// ============================================================
+
+class EstoquePage extends StatefulWidget {
+  const EstoquePage({super.key});
+
+  @override
+  State<EstoquePage> createState() =>
+      _EstoquePageState();
+}
+
+class _EstoquePageState
+    extends State<EstoquePage> {
+  List<Map<String, dynamic>> produtos = [];
+
+  Future<void> carregar() async {
+    final dados =
+        await DatabaseHelper.instance.buscarEstoque();
+
+    if (!mounted) return;
+
+    setState(() {
+      produtos = dados;
+    });
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    carregar();
+  }
+
+  Future<void> adicionarProduto([
+    Map<String, dynamic>? produto,
+  ]) async {
+    final nomeController = TextEditingController(
+      text: produto?['nome']?.toString() ?? '',
+    );
+
+    final quantidadeController =
+        TextEditingController(
+      text:
+          produto?['quantidade']?.toString() ?? '',
+    );
+
+    final compraController = TextEditingController(
+      text: produto?['precoCompra']?.toString() ?? '',
+    );
+
+    final vendaController = TextEditingController(
+      text:
+          produto?['precoVenda']?.toString() ?? '',
+    );
+
+    final salvar = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: Text(
+            produto == null
+                ? 'Adicionar estoque'
+                : 'Editar estoque',
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              children: [
+                TextField(
+                  controller: nomeController,
+                  decoration:
+                      const InputDecoration(
+                    labelText: 'Modelo',
+                    hintText:
+                        'Ex.: Fox C',
+                  ),
+                ),
+
+                TextField(
+                  controller:
+                      quantidadeController,
+                  keyboardType:
+                      TextInputType.number,
+                  decoration:
+                      const InputDecoration(
+                    labelText:
+                        'Quantidade',
+                  ),
+                ),
+
+                TextField(
+                  controller:
+                      compraController,
+                  keyboardType:
+                      const TextInputType
+                          .numberWithOptions(
+                    decimal: true,
+                  ),
+                  decoration:
+                      const InputDecoration(
+                    labelText:
+                        'Preço de compra',
+                    prefixText: 'R\$ ',
+                  ),
+                ),
+
+                TextField(
+                  controller:
+                      vendaController,
+                  keyboardType:
+                      const TextInputType
+                          .numberWithOptions(
+                    decimal: true,
+                  ),
+                  decoration:
+                      const InputDecoration(
+                    labelText:
+                        'Preço de venda',
+                    prefixText: 'R\$ ',
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(
+                  context,
+                  false,
+                );
+              },
+              child:
+                  const Text('Cancelar'),
+            ),
+            FilledButton(
+              onPressed: () {
+                Navigator.pop(
+                  context,
+                  true,
+                );
+              },
+              child: const Text('Salvar'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (salvar == true) {
+      final nome =
+          nomeController.text.trim();
+
+      final quantidade =
+          int.tryParse(
+                quantidadeController.text,
+              ) ??
+              0;
+
+      final compra =
+          converterValor(
+        compraController.text,
+      );
+
+      final venda =
+          converterValor(
+        vendaController.text,
+      );
+
+      if (nome.isNotEmpty &&
+          quantidade >= 0) {
+        if (produto == null) {
+          await DatabaseHelper.instance
+              .adicionarEstoque(
+            nome: nome,
+            quantidade: quantidade,
+            precoCompra: compra,
+            precoVenda: venda,
+          );
+        } else {
+          await DatabaseHelper.instance
+              .atualizarEstoque(
+            id: produto['id'] as int,
+            nome: nome,
+            quantidade: quantidade,
+            precoCompra: compra,
+            precoVenda: venda,
+          );
+        }
+
+        await carregar();
+      }
+    }
+
+    nomeController.dispose();
+    quantidadeController.dispose();
+    compraController.dispose();
+    vendaController.dispose();
+  }
+
+  Future<void> registrarVenda(
+    Map<String, dynamic> produto,
+  ) async {
+    final quantidade =
+        (produto['quantidade'] as num).toInt();
+
+    if (quantidade <= 0) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context)
+          .showSnackBar(
+        const SnackBar(
+          content:
+              Text('Produto sem estoque.'),
+        ),
+      );
+
+      return;
+    }
+
+    final valor =
+        (produto['precoVenda'] as num)
+            .toDouble();
+
+    await DatabaseHelper.instance
+        .diminuirEstoque(
+      produto['id'] as int,
+      1,
+    );
+
+    await DatabaseHelper.instance
+        .adicionarMovimentacao(
+      tipo: 'ganho',
+      categoria:
+          'Estoque - ${produto['nome']}',
+      valor: valor,
+      data: formatoBanco.format(
+        DateTime.now(),
+      ),
+    );
+
+    await carregar();
+
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context)
+        .showSnackBar(
+      SnackBar(
+        content: Text(
+          'Venda registrada: ${moeda.format(valor)}',
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    double investido = 0;
+    double valorVenda = 0;
+
+    for (final produto in produtos) {
+      final quantidade =
+          (produto['quantidade'] as num)
+              .toDouble();
+
+      final compra =
+          (produto['precoCompra'] as num)
+              .toDouble();
+
+      final venda =
+          (produto['precoVenda'] as num)
+              .toDouble();
+
+      investido += quantidade * compra;
+      valorVenda += quantidade * venda;
+    }
+
+    final lucroPotencial =
+        valorVenda - investido;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text(
+          'Estoque de cílios',
+        ),
+      ),
+
+      body: ListView(
+        padding:
+            const EdgeInsets.all(16),
+        children: [
+          Card(
+            child: Padding(
+              padding:
+                  const EdgeInsets.all(18),
+              child: Column(
+                crossAxisAlignment:
+                    CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Resumo do estoque',
+                    style: TextStyle(
+                      fontSize: 19,
+                      fontWeight:
+                          FontWeight.bold,
+                    ),
+                  ),
+
+                  const SizedBox(height: 12),
+
+                  Text(
+                    'Investido: ${moeda.format(investido)}',
+                  ),
+
+                  Text(
+                    'Valor de venda: ${moeda.format(valorVenda)}',
+                  ),
+
+                  Text(
+                    'Lucro potencial: ${moeda.format(lucroPotencial)}',
+                    style:
+                        const TextStyle(
+                      fontWeight:
+                          FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 12),
+
+          SizedBox(
+            height: 52,
+            child:
+                FilledButton.icon(
+              onPressed:
+                  () => adicionarProduto(),
+              icon: const Icon(
+                Icons.add,
+              ),
+              label: const Text(
+                'Adicionar modelo',
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 12),
+
+          if (produtos.isEmpty)
+            const Card(
+              child: Padding(
+                padding:
+                    EdgeInsets.all(30),
+                child: Center(
+                  child: Text(
+                    'Nenhum modelo cadastrado.',
+                  ),
+                ),
+              ),
+            ),
+
+          ...produtos.map(
+            (produto) {
+              final quantidade =
+                  (produto['quantidade']
+                          as num)
+                      .toInt();
+
+              final venda =
+                  (produto['precoVenda']
+                          as num)
+                      .toDouble();
+
+              final estoqueBaixo =
+                  quantidade <= 2;
+
+              return Card(
+                child: ListTile(
+                  leading:
+                      CircleAvatar(
+                    child: Icon(
+                      estoqueBaixo
+                          ? Icons.warning
+                          : Icons
+                              .inventory_2,
+                    ),
+                  ),
+
+                  title: Text(
+                    produto['nome'],
+                    style:
+                        const TextStyle(
+                      fontWeight:
+                          FontWeight.bold,
+                    ),
+                  ),
+
+                  subtitle: Text(
+                    'Quantidade: $quantidade\n'
+                    'Venda: ${moeda.format(venda)}'
+                    '${estoqueBaixo ? '\n⚠️ Estoque baixo' : ''}',
+                  ),
+
+                  isThreeLine: true,
+
+                  trailing:
+                      PopupMenuButton<
+                          String>(
+                    onSelected:
+                        (opcao) async {
+                      if (opcao ==
+                          'vender') {
+                        await registrarVenda(
+                          produto,
+                        );
+                      }
+
+                      if (opcao ==
+                          'editar') {
+                        await adicionarProduto(
+                          produto,
+                        );
+                      }
+
+                      if (opcao ==
+                          'excluir') {
+                        await DatabaseHelper
+                            .instance
+                            .excluirEstoque(
+                          produto['id']
+                              as int,
+                        );
+
+                        await carregar();
+                      }
+                    },
+                    itemBuilder:
+                        (context) => const [
+                      PopupMenuItem(
+                        value: 'vender',
+                        child: Text(
+                          'Registrar venda',
+                        ),
+                      ),
+                      PopupMenuItem(
+                        value: 'editar',
+                        child: Text(
+                          'Editar',
+                        ),
+                      ),
+                      PopupMenuItem(
+                        value: 'excluir',
+                        child: Text(
+                          'Excluir',
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ============================================================
+// HISTÓRICO
+// ============================================================
 
 class HistoricoPage extends StatefulWidget {
   const HistoricoPage({super.key});
@@ -652,33 +1297,20 @@ class HistoricoPage extends StatefulWidget {
       _HistoricoPageState();
 }
 
-class _HistoricoPageState extends State<HistoricoPage> {
+class _HistoricoPageState
+    extends State<HistoricoPage> {
   List<Map<String, dynamic>> registros = [];
-
-  final DateFormat formatoData =
-      DateFormat('dd/MM/yyyy');
-
-  String moeda(double valor) {
-    return NumberFormat.currency(
-      locale: 'pt_BR',
-      symbol: 'R\$',
-    ).format(valor);
-  }
 
   Future<void> carregar() async {
     final dados =
-        await DatabaseHelper.instance.buscarTodos();
+        await DatabaseHelper.instance
+            .buscarMovimentacoes();
 
     if (!mounted) return;
 
     setState(() {
       registros = dados;
     });
-  }
-
-  Future<void> excluir(int id) async {
-    await DatabaseHelper.instance.excluir(id);
-    await carregar();
   }
 
   @override
@@ -689,69 +1321,164 @@ class _HistoricoPageState extends State<HistoricoPage> {
 
   @override
   Widget build(BuildContext context) {
+    double ganhos = 0;
+    double gastos = 0;
+
+    for (final registro in registros) {
+      final valor =
+          (registro['valor'] as num)
+              .toDouble();
+
+      if (registro['tipo'] ==
+          'ganho') {
+        ganhos += valor;
+      } else {
+        gastos += valor;
+      }
+    }
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Histórico'),
+        title: const Text(
+          'Histórico',
+        ),
       ),
-      body: registros.isEmpty
-          ? const Center(
-              child: Text(
-                'Nenhum registro encontrado.',
-                style: TextStyle(fontSize: 16),
+
+      body: RefreshIndicator(
+        onRefresh: carregar,
+        child: ListView(
+          padding:
+              const EdgeInsets.all(16),
+          children: [
+            Card(
+              child: Padding(
+                padding:
+                    const EdgeInsets.all(18),
+                child: Column(
+                  crossAxisAlignment:
+                      CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Resumo geral',
+                      style: TextStyle(
+                        fontSize: 19,
+                        fontWeight:
+                            FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(
+                      height: 10,
+                    ),
+                    Text(
+                      'Ganhos: ${moeda.format(ganhos)}',
+                    ),
+                    Text(
+                      'Gastos: ${moeda.format(gastos)}',
+                    ),
+                    Text(
+                      'Lucro: ${moeda.format(ganhos - gastos)}',
+                      style:
+                          const TextStyle(
+                        fontWeight:
+                            FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            )
-          : ListView.builder(
-              padding: const EdgeInsets.all(12),
-              itemCount: registros.length,
-              itemBuilder: (context, index) {
-                final registro = registros[index];
+            ),
 
-                final tipo = registro['tipo'];
-                final categoria = registro['categoria'];
+            const SizedBox(
+              height: 10,
+            ),
+
+            if (registros.isEmpty)
+              const Padding(
+                padding:
+                    EdgeInsets.all(30),
+                child: Center(
+                  child: Text(
+                    'Nenhum registro.',
+                  ),
+                ),
+              ),
+
+            ...registros.map(
+              (registro) {
+                final ganho =
+                    registro['tipo'] ==
+                        'ganho';
+
                 final valor =
-                    (registro['valor'] as num).toDouble();
-                final data =
-                    DateTime.parse(registro['data']);
+                    (registro['valor']
+                            as num)
+                        .toDouble();
 
-                final ganho = tipo == 'ganho';
+                final data =
+                    DateTime.parse(
+                  registro['data'],
+                );
 
                 return Card(
                   child: ListTile(
-                    leading: CircleAvatar(
+                    leading:
+                        CircleAvatar(
                       child: Icon(
                         ganho
-                            ? Icons.arrow_upward
-                            : Icons.arrow_downward,
+                            ? Icons
+                                .arrow_upward
+                            : Icons
+                                .arrow_downward,
                       ),
                     ),
+
                     title: Text(
-                      categoria,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                      ),
+                      registro[
+                          'categoria'],
                     ),
+
                     subtitle: Text(
-                      formatoData.format(data),
+                      formatoData
+                          .format(data),
                     ),
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
+
+                    trailing:
+                        Row(
+                      mainAxisSize:
+                          MainAxisSize.min,
                       children: [
                         Text(
-                          ganho
-                              ? '+ ${moeda(valor)}'
-                              : '- ${moeda(valor)}',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
+                          '${ganho ? '+' : '-'} ${moeda.format(valor)}',
+                          style:
+                              TextStyle(
+                            fontWeight:
+                                FontWeight
+                                    .bold,
                             color: ganho
-                                ? Colors.green
-                                : Colors.red,
+                                ? Colors
+                                    .green
+                                : Colors
+                                    .red,
                           ),
                         ),
+
                         IconButton(
-                          onPressed: () =>
-                              excluir(registro['id']),
-                          icon: const Icon(
-                            Icons.delete_outline,
+                          onPressed:
+                              () async {
+                            await DatabaseHelper
+                                .instance
+                                .excluirMovimentacao(
+                              registro[
+                                      'id']
+                                  as int,
+                            );
+
+                            await carregar();
+                          },
+                          icon:
+                              const Icon(
+                            Icons
+                                .delete_outline,
                           ),
                         ),
                       ],
@@ -760,6 +1487,9 @@ class _HistoricoPageState extends State<HistoricoPage> {
                 );
               },
             ),
+          ],
+        ),
+      ),
     );
   }
 }
