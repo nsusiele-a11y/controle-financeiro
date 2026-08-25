@@ -20,12 +20,19 @@ jobs:
         run: |
           echo "Arquivos do projeto:"
           ls -la
+          echo "Conteudo do pubspec.yaml:"
+          cat pubspec.yaml
 
-      - name: Criar estrutura Flutter
+      - name: Criar projeto Flutter se necessario
         run: |
           if [ ! -f pubspec.yaml ]; then
             flutter create . --project-name controle_financeiro --platforms=android
           fi
+
+      - name: Instalar dependencias do aplicativo
+        run: |
+          flutter pub add shared_preferences
+          flutter pub add intl
 
       - name: Instalar dependencias
         run: flutter pub get
