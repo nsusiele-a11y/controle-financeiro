@@ -1,29 +1,38 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(const ControleFinanceiroApp());
+  runApp(const MeuControleApp());
 }
 
-class ControleFinanceiroApp extends StatelessWidget {
-  const ControleFinanceiroApp({super.key});
+// ============================================================
+// FORMATAÇÃO
+// ============================================================
 
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Controle Financeiro',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        useMaterial3: true,
-        colorSchemeSeed: Colors.blue,
-        scaffoldBackgroundColor: const Color(0xFFF5F7FA),
-      ),
-      home: const HomePage(),
-    );
-  }
+final NumberFormat moeda = NumberFormat.currency(
+  locale: 'pt_BR',
+  symbol: 'R\$',
+);
+
+final DateFormat dataFormatada = DateFormat('dd/MM/yyyy');
+
+String dataBanco(DateTime data) {
+  return DateFormat('yyyy-MM-dd').format(data);
+}
+
+double valorNumero(String texto) {
+  final valor = texto.trim();
+
+  if (valor.isEmpty) return 0;
+
+  return double.tryParse(
+        valor.replaceAll('.', '').replaceAll(',', '.'),
+      ) ??
+      0;
 }
 
 // ============================================================
@@ -53,7 +62,11 @@ class Produto {
 
   double get valorEstoque => quantidade * custo;
 
+  double get valorVendaEstoque => quantidade * venda;
+
   double get lucroUnitario => venda - custo;
+
+  double get lucroEstoque => quantidade * lucroUnitario;
 
   bool get estoqueBaixo => quantidade <= estoqueMinimo;
 
@@ -91,13 +104,15 @@ class Produto {
 class Movimentacao {
   final String id;
   final String tipo;
+  final String categoria;
   final String descricao;
   final double valor;
-  final DateTime data;
+  final String data;
 
   Movimentacao({
     required this.id,
     required this.tipo,
+    required this.categoria,
     required this.descricao,
     required this.valor,
     required this.data,
@@ -107,20 +122,21 @@ class Movimentacao {
     return {
       'id': id,
       'tipo': tipo,
+      'categoria': categoria,
       'descricao': descricao,
       'valor': valor,
-      'data': data.toIso8601String(),
+      'data': data,
     };
   }
 
   factory Movimentacao.fromMap(Map<String, dynamic> map) {
     return Movimentacao(
       id: map['id']?.toString() ?? '',
-      tipo: map['tipo']?.toString() ?? 'entrada',
+      tipo: map['tipo']?.toString() ?? 'ganho',
+      categoria: map['categoria']?.toString() ?? 'Outros',
       descricao: map['descricao']?.toString() ?? '',
       valor: (map['valor'] as num?)?.toDouble() ?? 0,
-      data: DateTime.tryParse(map['data']?.toString() ?? '') ??
-          DateTime.now(),
+      data: map['data']?.toString() ?? dataBanco(DateTime.now()),
     );
   }
 }
@@ -129,57 +145,92 @@ class Movimentacao {
 // ARMAZENAMENTO
 // ============================================================
 
-class AppStorage {
-  static const produtosKey = 'produtos';
-  static const movimentacoesKey = 'movimentacoes';
+class Storage {
+  static const String movimentacoesKey = 'movimentacoes';
+  static const String estoqueKey = 'estoque';
 
-  static Future<List<Produto>> carregarProdutos() async {
+  static Future<List<Movimentacao>> movimentacoes() async {
     final prefs = await SharedPreferences.getInstance();
 
-    final dados = prefs.getStringList(produtosKey) ?? [];
+    final lista = prefs.getStringList(movimentacoesKey);
 
-    return dados
-        .map(
-          (item) => Produto.fromMap(
-            jsonDecode(item) as Map<String, dynamic>,
-          ),
-        )
-        .toList();
-  }
+    if (lista == null) return [];
 
-  static Future<void> salvarProdutos(List<Produto> produtos) async {
-    final prefs = await SharedPreferences.getInstance();
-
-    await prefs.setStringList(
-      produtosKey,
-      produtos.map((produto) => jsonEncode(produto.toMap())).toList(),
-    );
-  }
-
-  static Future<List<Movimentacao>> carregarMovimentacoes() async {
-    final prefs = await SharedPreferences.getInstance();
-
-    final dados = prefs.getStringList(movimentacoesKey) ?? [];
-
-    return dados
-        .map(
-          (item) => Movimentacao.fromMap(
-            jsonDecode(item) as Map<String, dynamic>,
-          ),
-        )
-        .toList();
+    return lista.map((item) {
+      try {
+        return Movimentacao.fromMap(
+          jsonDecode(item) as Map<String, dynamic>,
+        );
+      } catch (_) {
+        return Movimentacao(
+          id: DateTime.now().microsecondsSinceEpoch.toString(),
+          tipo: 'ganho',
+          categoria: 'Outros',
+          descricao: '',
+          valor: 0,
+          data: dataBanco(DateTime.now()),
+        );
+      }
+    }).toList();
   }
 
   static Future<void> salvarMovimentacoes(
-    List<Movimentacao> movimentacoes,
+    List<Movimentacao> lista,
   ) async {
     final prefs = await SharedPreferences.getInstance();
 
     await prefs.setStringList(
       movimentacoesKey,
-      movimentacoes
-          .map((movimentacao) => jsonEncode(movimentacao.toMap()))
-          .toList(),
+      lista.map((item) => jsonEncode(item.toMap())).toList(),
+    );
+  }
+
+  static Future<List<Produto>> estoque() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    final lista = prefs.getStringList(estoqueKey);
+
+    if (lista == null) return [];
+
+    return lista.map((item) {
+      return Produto.fromMap(
+        jsonDecode(item) as Map<String, dynamic>,
+      );
+    }).toList();
+  }
+
+  static Future<void> salvarEstoque(
+    List<Produto> lista,
+  ) async {
+    final prefs = await SharedPreferences.getInstance();
+
+    await prefs.setStringList(
+      estoqueKey,
+      lista.map((item) => jsonEncode(item.toMap())).toList(),
+    );
+  }
+}
+
+// ============================================================
+// APP
+// ============================================================
+
+class MeuControleApp extends StatelessWidget {
+  const MeuControleApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Meu Controle',
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        useMaterial3: true,
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: Colors.green,
+        ),
+        scaffoldBackgroundColor: const Color(0xFFF5F7F6),
+      ),
+      home: const HomePage(),
     );
   }
 }
@@ -196,7 +247,9 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  int paginaAtual = 0;
+  int pagina = 0;
+
+  DateTime dataSelecionada = DateTime.now();
 
   List<Produto> produtos = [];
   List<Movimentacao> movimentacoes = [];
@@ -210,9 +263,8 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> carregarDados() async {
-    final produtosSalvos = await AppStorage.carregarProdutos();
-    final movimentacoesSalvas =
-        await AppStorage.carregarMovimentacoes();
+    final produtosSalvos = await Storage.estoque();
+    final movimentacoesSalvas = await Storage.movimentacoes();
 
     if (!mounted) return;
 
@@ -223,29 +275,208 @@ class _HomePageState extends State<HomePage> {
     });
   }
 
-  double get entradas {
-    return movimentacoes
-        .where((item) => item.tipo == 'entrada')
-        .fold(0, (total, item) => total + item.valor);
-  }
+  Future<void> registrarGanho(
+    String categoria,
+    double valor,
+  ) async {
+    if (valor <= 0) return;
 
-  double get saidas {
-    return movimentacoes
-        .where((item) => item.tipo == 'saida')
-        .fold(0, (total, item) => total + item.valor);
-  }
+    final lista = [...movimentacoes];
 
-  double get saldo => entradas - saidas;
-
-  double get valorEstoque {
-    return produtos.fold(
-      0,
-      (total, produto) => total + produto.valorEstoque,
+    lista.add(
+      Movimentacao(
+        id: DateTime.now().microsecondsSinceEpoch.toString(),
+        tipo: 'ganho',
+        categoria: categoria,
+        descricao: categoria,
+        valor: valor,
+        data: dataBanco(dataSelecionada),
+      ),
     );
+
+    await Storage.salvarMovimentacoes(lista);
+    await carregarDados();
   }
 
-  int get produtosEstoqueBaixo {
-    return produtos.where((produto) => produto.estoqueBaixo).length;
+  Future<void> adicionarGasto() async {
+    final descricaoController = TextEditingController();
+    final valorController = TextEditingController();
+
+    final resultado = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Adicionar gasto'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: descricaoController,
+                decoration: const InputDecoration(
+                  labelText: 'Descrição',
+                  prefixIcon: Icon(Icons.description),
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: valorController,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                decoration: const InputDecoration(
+                  labelText: 'Valor',
+                  prefixText: 'R\$ ',
+                  prefixIcon: Icon(Icons.attach_money),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(dialogContext, false);
+              },
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              onPressed: () {
+                final valor = valorNumero(valorController.text);
+
+                if (descricaoController.text.trim().isEmpty ||
+                    valor <= 0) {
+                  return;
+                }
+
+                Navigator.pop(dialogContext, true);
+              },
+              child: const Text('Salvar'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (resultado != true) {
+      descricaoController.dispose();
+      valorController.dispose();
+      return;
+    }
+
+    final descricao = descricaoController.text.trim();
+    final valor = valorNumero(valorController.text);
+
+    descricaoController.dispose();
+    valorController.dispose();
+
+    if (valor <= 0) return;
+
+    final lista = [...movimentacoes];
+
+    lista.add(
+      Movimentacao(
+        id: DateTime.now().microsecondsSinceEpoch.toString(),
+        tipo: 'gasto',
+        categoria: 'Gasto',
+        descricao: descricao,
+        valor: valor,
+        data: dataBanco(dataSelecionada),
+      ),
+    );
+
+    await Storage.salvarMovimentacoes(lista);
+    await carregarDados();
+  }
+
+  Future<void> outroGanho() async {
+    final descricaoController = TextEditingController(
+      text: 'Outro ganho',
+    );
+    final valorController = TextEditingController();
+
+    final resultado = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Outro ganho'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: descricaoController,
+                decoration: const InputDecoration(
+                  labelText: 'Descrição',
+                  prefixIcon: Icon(Icons.edit),
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: valorController,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                decoration: const InputDecoration(
+                  labelText: 'Valor',
+                  prefixText: 'R\$ ',
+                  prefixIcon: Icon(Icons.attach_money),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(dialogContext, false);
+              },
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              onPressed: () {
+                final valor = valorNumero(valorController.text);
+
+                if (valor <= 0) return;
+
+                Navigator.pop(dialogContext, true);
+              },
+              child: const Text('Adicionar'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (resultado != true) {
+      descricaoController.dispose();
+      valorController.dispose();
+      return;
+    }
+
+    final descricao = descricaoController.text.trim().isEmpty
+        ? 'Outro ganho'
+        : descricaoController.text.trim();
+
+    final valor = valorNumero(valorController.text);
+
+    descricaoController.dispose();
+    valorController.dispose();
+
+    if (valor <= 0) return;
+
+    await registrarGanho(descricao, valor);
+  }
+
+  Future<void> escolherData() async {
+    final data = await showDatePicker(
+      context: context,
+      initialDate: dataSelecionada,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2100),
+    );
+
+    if (data != null) {
+      setState(() {
+        dataSelecionada = data;
+      });
+    }
   }
 
   @override
@@ -260,11 +491,13 @@ class _HomePageState extends State<HomePage> {
 
     final paginas = [
       DashboardPage(
-        entradas: entradas,
-        saidas: saidas,
-        saldo: saldo,
-        valorEstoque: valorEstoque,
-        produtosEstoqueBaixo: produtosEstoqueBaixo,
+        data: dataSelecionada,
+        onData: escolherData,
+        onGanho: registrarGanho,
+        onGasto: adicionarGasto,
+        onOutroGanho: outroGanho,
+        produtos: produtos,
+        movimentacoes: movimentacoes,
       ),
       EstoquePage(
         produtos: produtos,
@@ -273,38 +506,30 @@ class _HomePageState extends State<HomePage> {
       FinanceiroPage(
         movimentacoes: movimentacoes,
         onAlterar: carregarDados,
+        dataSelecionada: dataSelecionada,
       ),
       RelatoriosPage(
-        entradas: entradas,
-        saidas: saidas,
-        saldo: saldo,
-        valorEstoque: valorEstoque,
         produtos: produtos,
+        movimentacoes: movimentacoes,
       ),
     ];
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text(
-          'Controle Financeiro',
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-          ),
-        ),
+      body: SafeArea(
+        child: paginas[pagina],
       ),
-      body: paginas[paginaAtual],
       bottomNavigationBar: NavigationBar(
-        selectedIndex: paginaAtual,
+        selectedIndex: pagina,
         onDestinationSelected: (index) {
           setState(() {
-            paginaAtual = index;
+            pagina = index;
           });
         },
         destinations: const [
           NavigationDestination(
             icon: Icon(Icons.dashboard_outlined),
             selectedIcon: Icon(Icons.dashboard),
-            label: 'Início',
+            label: 'Resumo',
           ),
           NavigationDestination(
             icon: Icon(Icons.inventory_2_outlined),
@@ -331,148 +556,348 @@ class _HomePageState extends State<HomePage> {
 // DASHBOARD
 // ============================================================
 
-class DashboardPage extends StatelessWidget {
-  final double entradas;
-  final double saidas;
-  final double saldo;
-  final double valorEstoque;
-  final int produtosEstoqueBaixo;
+class DashboardPage extends StatefulWidget {
+  final DateTime data;
+  final VoidCallback onData;
+
+  final Future<void> Function(String, double) onGanho;
+  final Future<void> Function() onGasto;
+  final Future<void> Function() onOutroGanho;
+
+  final List<Produto> produtos;
+  final List<Movimentacao> movimentacoes;
 
   const DashboardPage({
     super.key,
-    required this.entradas,
-    required this.saidas,
-    required this.saldo,
-    required this.valorEstoque,
-    required this.produtosEstoqueBaixo,
+    required this.data,
+    required this.onData,
+    required this.onGanho,
+    required this.onGasto,
+    required this.onOutroGanho,
+    required this.produtos,
+    required this.movimentacoes,
   });
 
-  String moeda(double valor) {
-    return 'R\$ ${valor.toStringAsFixed(2).replaceAll('.', ',')}';
-  }
+  @override
+  State<DashboardPage> createState() => _DashboardPageState();
+}
 
+class _DashboardPageState extends State<DashboardPage> {
   @override
   Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        const Text(
-          'Dashboard',
-          style: TextStyle(
-            fontSize: 28,
+    final data = dataBanco(widget.data);
+
+    double ganhos = 0;
+    double gastos = 0;
+    int atendimentos = 0;
+
+    for (final item in widget.movimentacoes) {
+      if (item.data != data) continue;
+
+      if (item.tipo == 'ganho') {
+        ganhos += item.valor;
+        atendimentos++;
+      } else {
+        gastos += item.valor;
+      }
+    }
+
+    final lucro = ganhos - gastos;
+
+    final valorEstoque = widget.produtos.fold<double>(
+      0,
+      (total, produto) => total + produto.valorEstoque,
+    );
+
+    final valorVendaEstoque = widget.produtos.fold<double>(
+      0,
+      (total, produto) => total + produto.valorVendaEstoque,
+    );
+
+    final lucroEstoque = widget.produtos.fold<double>(
+      0,
+      (total, produto) => total + produto.lucroEstoque,
+    );
+
+    final estoqueBaixo = widget.produtos
+        .where((produto) => produto.estoqueBaixo)
+        .length;
+
+    return RefreshIndicator(
+      onRefresh: () async {
+        setState(() {});
+      },
+      child: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'Meu Controle',
+                  style: TextStyle(
+                    fontSize: 28,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              IconButton(
+                onPressed: widget.onData,
+                icon: const Icon(Icons.calendar_month),
+              ),
+            ],
+          ),
+
+          Text(
+            dataFormatada.format(widget.data),
+            style: const TextStyle(
+              color: Colors.grey,
+            ),
+          ),
+
+          const SizedBox(height: 18),
+
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                children: [
+                  const Text(
+                    'Lucro do dia',
+                    style: TextStyle(
+                      fontSize: 16,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    moeda.format(lucro),
+                    style: TextStyle(
+                      fontSize: 32,
+                      fontWeight: FontWeight.bold,
+                      color: lucro >= 0
+                          ? Colors.green
+                          : Colors.red,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '$atendimentos registros no dia',
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 12),
+
+          Row(
+            children: [
+              Expanded(
+                child: _resumo(
+                  'Ganhos',
+                  ganhos,
+                  Colors.green,
+                  Icons.arrow_upward,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _resumo(
+                  'Gastos',
+                  gastos,
+                  Colors.red,
+                  Icons.arrow_downward,
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 20),
+
+          const Text(
+            'Atendimentos',
+            style: TextStyle(
+              fontSize: 21,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+
+          const SizedBox(height: 8),
+
+          _servico(
+            'Cílios normal',
+            120,
+            Icons.remove_red_eye,
+          ),
+
+          _servico(
+            'Fox',
+            150,
+            Icons.auto_awesome,
+          ),
+
+          _servico(
+            'Sobrancelha',
+            30,
+            Icons.face,
+          ),
+
+          _servico(
+            'Manutenção',
+            80,
+            Icons.build,
+          ),
+
+          const SizedBox(height: 8),
+
+          OutlinedButton.icon(
+            onPressed: widget.onOutroGanho,
+            icon: const Icon(Icons.add),
+            label: const Text('Outro ganho'),
+          ),
+
+          const SizedBox(height: 10),
+
+          FilledButton.icon(
+            onPressed: widget.onGasto,
+            icon: const Icon(Icons.remove_circle),
+            label: const Text('Adicionar gasto'),
+          ),
+
+          const SizedBox(height: 22),
+
+          const Text(
+            'Resumo do estoque',
+            style: TextStyle(
+              fontSize: 21,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+
+          const SizedBox(height: 8),
+
+          _infoCard(
+            'Valor investido no estoque',
+            moeda.format(valorEstoque),
+            Icons.inventory_2,
+          ),
+
+          _infoCard(
+            'Valor de venda do estoque',
+            moeda.format(valorVendaEstoque),
+            Icons.sell,
+          ),
+
+          _infoCard(
+            'Lucro potencial do estoque',
+            moeda.format(lucroEstoque),
+            Icons.trending_up,
+          ),
+
+          Card(
+            child: ListTile(
+              leading: CircleAvatar(
+                child: Icon(
+                  estoqueBaixo > 0
+                      ? Icons.warning
+                      : Icons.check_circle,
+                ),
+              ),
+              title: const Text(
+                'Estoque baixo',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              subtitle: Text(
+                estoqueBaixo == 0
+                    ? 'Nenhum produto abaixo do mínimo'
+                    : '$estoqueBaixo produto(s) precisam de reposição',
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _servico(
+    String nome,
+    double valor,
+    IconData icone,
+  ) {
+    return Card(
+      child: ListTile(
+        leading: CircleAvatar(
+          child: Icon(icone),
+        ),
+        title: Text(
+          nome,
+          style: const TextStyle(
             fontWeight: FontWeight.bold,
           ),
         ),
-        const SizedBox(height: 6),
-        Text(
-          'Resumo da sua operação',
-          style: TextStyle(
-            color: Colors.grey.shade700,
-          ),
+        subtitle: Text(
+          moeda.format(valor),
         ),
-        const SizedBox(height: 20),
-
-        _ResumoCard(
-          titulo: 'Saldo',
-          valor: moeda(saldo),
-          icone: Icons.account_balance_wallet,
+        trailing: const Icon(
+          Icons.add_circle,
         ),
+        onTap: () async {
+          await widget.onGanho(nome, valor);
 
-        const SizedBox(height: 12),
-
-        Row(
-          children: [
-            Expanded(
-              child: _ResumoCard(
-                titulo: 'Entradas',
-                valor: moeda(entradas),
-                icone: Icons.arrow_downward,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _ResumoCard(
-                titulo: 'Saídas',
-                valor: moeda(saidas),
-                icone: Icons.arrow_upward,
-              ),
-            ),
-          ],
-        ),
-
-        const SizedBox(height: 12),
-
-        _ResumoCard(
-          titulo: 'Valor do estoque',
-          valor: moeda(valorEstoque),
-          icone: Icons.inventory_2,
-        ),
-
-        const SizedBox(height: 12),
-
-        Card(
-          child: ListTile(
-            leading: CircleAvatar(
-              child: Icon(
-                produtosEstoqueBaixo > 0
-                    ? Icons.warning
-                    : Icons.check_circle,
-              ),
-            ),
-            title: const Text(
-              'Estoque baixo',
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            subtitle: Text(
-              produtosEstoqueBaixo == 0
-                  ? 'Nenhum produto abaixo do mínimo'
-                  : '$produtosEstoqueBaixo produto(s) precisam de reposição',
-            ),
-          ),
-        ),
-      ],
+          if (mounted) {
+            setState(() {});
+          }
+        },
+      ),
     );
   }
-}
 
-class _ResumoCard extends StatelessWidget {
-  final String titulo;
-  final String valor;
-  final IconData icone;
-
-  const _ResumoCard({
-    required this.titulo,
-    required this.valor,
-    required this.icone,
-  });
-
-  @override
-  Widget build(BuildContext context) {
+  Widget _resumo(
+    String titulo,
+    double valor,
+    Color cor,
+    IconData icone,
+  ) {
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(18),
+        padding: const EdgeInsets.all(16),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(icone, size: 30),
-            const SizedBox(height: 12),
-            Text(
-              titulo,
-              style: TextStyle(
-                color: Colors.grey.shade700,
-              ),
+            Icon(
+              icone,
+              color: cor,
             ),
             const SizedBox(height: 5),
+            Text(titulo),
+            const SizedBox(height: 3),
             Text(
-              valor,
+              moeda.format(valor),
               style: const TextStyle(
-                fontSize: 21,
                 fontWeight: FontWeight.bold,
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _infoCard(
+    String titulo,
+    String valor,
+    IconData icone,
+  ) {
+    return Card(
+      child: ListTile(
+        leading: Icon(icone),
+        title: Text(titulo),
+        subtitle: Text(
+          valor,
+          style: const TextStyle(
+            fontWeight: FontWeight.bold,
+          ),
         ),
       ),
     );
@@ -515,28 +940,37 @@ class _EstoquePageState extends State<EstoquePage> {
   }
 
   Future<void> abrirProduto([Produto? produto]) async {
-    final nomeController =
-        TextEditingController(text: produto?.nome ?? '');
-    final skuController =
-        TextEditingController(text: produto?.sku ?? '');
-    final categoriaController =
-        TextEditingController(text: produto?.categoria ?? '');
+    final nomeController = TextEditingController(
+      text: produto?.nome ?? '',
+    );
+
+    final skuController = TextEditingController(
+      text: produto?.sku ?? '',
+    );
+
+    final categoriaController = TextEditingController(
+      text: produto?.categoria ?? '',
+    );
+
     final quantidadeController = TextEditingController(
       text: produto?.quantidade.toString() ?? '0',
     );
+
     final minimoController = TextEditingController(
       text: produto?.estoqueMinimo.toString() ?? '0',
     );
+
     final custoController = TextEditingController(
       text: produto?.custo.toStringAsFixed(2) ?? '',
     );
+
     final vendaController = TextEditingController(
       text: produto?.venda.toStringAsFixed(2) ?? '',
     );
 
     final resultado = await showDialog<bool>(
       context: context,
-      builder: (context) {
+      builder: (dialogContext) {
         return AlertDialog(
           title: Text(
             produto == null
@@ -593,20 +1027,18 @@ class _EstoquePageState extends State<EstoquePage> {
                   const SizedBox(height: 10),
                   TextField(
                     controller: custoController,
-                    keyboardType:
-                        const TextInputType.numberWithOptions(
+                    keyboardType: const TextInputType.numberWithOptions(
                       decimal: true,
                     ),
                     decoration: const InputDecoration(
-                      labelText: 'Custo',
+                      labelText: 'Custo de compra',
                       prefixText: 'R\$ ',
                     ),
                   ),
                   const SizedBox(height: 10),
                   TextField(
                     controller: vendaController,
-                    keyboardType:
-                        const TextInputType.numberWithOptions(
+                    keyboardType: const TextInputType.numberWithOptions(
                       decimal: true,
                     ),
                     decoration: const InputDecoration(
@@ -620,11 +1052,15 @@ class _EstoquePageState extends State<EstoquePage> {
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(context, false),
+              onPressed: () {
+                Navigator.pop(dialogContext, false);
+              },
               child: const Text('Cancelar'),
             ),
             FilledButton(
-              onPressed: () => Navigator.pop(context, true),
+              onPressed: () {
+                Navigator.pop(dialogContext, true);
+              },
               child: const Text('Salvar'),
             ),
           ],
@@ -632,50 +1068,77 @@ class _EstoquePageState extends State<EstoquePage> {
       },
     );
 
-    if (resultado != true) return;
+    if (resultado != true) {
+      nomeController.dispose();
+      skuController.dispose();
+      categoriaController.dispose();
+      quantidadeController.dispose();
+      minimoController.dispose();
+      custoController.dispose();
+      vendaController.dispose();
+      return;
+    }
 
     final nome = nomeController.text.trim();
 
     if (nome.isEmpty) {
+      nomeController.dispose();
+      skuController.dispose();
+      categoriaController.dispose();
+      quantidadeController.dispose();
+      minimoController.dispose();
+      custoController.dispose();
+      vendaController.dispose();
       return;
     }
 
     final novoProduto = Produto(
       id: produto?.id ??
-          DateTime.now().millisecondsSinceEpoch.toString(),
+          DateTime.now().microsecondsSinceEpoch.toString(),
       sku: skuController.text.trim(),
       nome: nome,
       categoria: categoriaController.text.trim().isEmpty
           ? 'Geral'
           : categoriaController.text.trim(),
-      quantidade:
-          int.tryParse(quantidadeController.text) ?? 0,
-      estoqueMinimo:
-          int.tryParse(minimoController.text) ?? 0,
-      custo: double.tryParse(
-            custoController.text.replaceAll(',', '.'),
+      quantidade: int.tryParse(
+            quantidadeController.text,
           ) ??
           0,
-      venda: double.tryParse(
-            vendaController.text.replaceAll(',', '.'),
+      estoqueMinimo: int.tryParse(
+            minimoController.text,
           ) ??
           0,
+      custo: valorNumero(
+        custoController.text,
+      ),
+      venda: valorNumero(
+        vendaController.text,
+      ),
     );
+
+    nomeController.dispose();
+    skuController.dispose();
+    categoriaController.dispose();
+    quantidadeController.dispose();
+    minimoController.dispose();
+    custoController.dispose();
+    vendaController.dispose();
 
     final lista = [...widget.produtos];
 
     if (produto == null) {
       lista.add(novoProduto);
     } else {
-      final index =
-          lista.indexWhere((item) => item.id == produto.id);
+      final index = lista.indexWhere(
+        (item) => item.id == produto.id,
+      );
 
       if (index >= 0) {
         lista[index] = novoProduto;
       }
     }
 
-    await AppStorage.salvarProdutos(lista);
+    await Storage.salvarEstoque(lista);
 
     widget.onAlterar();
   }
@@ -683,7 +1146,7 @@ class _EstoquePageState extends State<EstoquePage> {
   Future<void> excluirProduto(Produto produto) async {
     final confirmar = await showDialog<bool>(
       context: context,
-      builder: (context) {
+      builder: (dialogContext) {
         return AlertDialog(
           title: const Text('Excluir produto?'),
           content: Text(
@@ -691,11 +1154,15 @@ class _EstoquePageState extends State<EstoquePage> {
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(context, false),
+              onPressed: () {
+                Navigator.pop(dialogContext, false);
+              },
               child: const Text('Cancelar'),
             ),
             FilledButton(
-              onPressed: () => Navigator.pop(context, true),
+              onPressed: () {
+                Navigator.pop(dialogContext, true);
+              },
               child: const Text('Excluir'),
             ),
           ],
@@ -709,7 +1176,35 @@ class _EstoquePageState extends State<EstoquePage> {
         .where((item) => item.id != produto.id)
         .toList();
 
-    await AppStorage.salvarProdutos(lista);
+    await Storage.salvarEstoque(lista);
+
+    widget.onAlterar();
+  }
+
+  Future<void> alterarQuantidade(
+    Produto produto,
+    int quantidade,
+  ) async {
+    final lista = [...widget.produtos];
+
+    final index = lista.indexWhere(
+      (item) => item.id == produto.id,
+    );
+
+    if (index < 0) return;
+
+    lista[index] = Produto(
+      id: produto.id,
+      sku: produto.sku,
+      nome: produto.nome,
+      categoria: produto.categoria,
+      quantidade: quantidade < 0 ? 0 : quantidade,
+      estoqueMinimo: produto.estoqueMinimo,
+      custo: produto.custo,
+      venda: produto.venda,
+    );
+
+    await Storage.salvarEstoque(lista);
 
     widget.onAlterar();
   }
@@ -721,6 +1216,11 @@ class _EstoquePageState extends State<EstoquePage> {
     final valorTotal = widget.produtos.fold<double>(
       0,
       (total, produto) => total + produto.valorEstoque,
+    );
+
+    final valorVenda = widget.produtos.fold<double>(
+      0,
+      (total, produto) => total + produto.valorVendaEstoque,
     );
 
     return Scaffold(
@@ -744,10 +1244,25 @@ class _EstoquePageState extends State<EstoquePage> {
           const SizedBox(height: 6),
 
           Text(
-            '${widget.produtos.length} produtos • '
-            'R\$ ${valorTotal.toStringAsFixed(2)} em estoque',
-            style: TextStyle(
-              color: Colors.grey.shade700,
+            '${widget.produtos.length} produtos',
+            style: const TextStyle(
+              color: Colors.grey,
+            ),
+          ),
+
+          const SizedBox(height: 4),
+
+          Text(
+            'Investido: ${moeda.format(valorTotal)}',
+            style: const TextStyle(
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+
+          Text(
+            'Venda prevista: ${moeda.format(valorVenda)}',
+            style: const TextStyle(
+              fontWeight: FontWeight.bold,
             ),
           ),
 
@@ -797,48 +1312,109 @@ class _EstoquePageState extends State<EstoquePage> {
           ...lista.map(
             (produto) => Card(
               margin: const EdgeInsets.only(bottom: 10),
-              child: ListTile(
-                contentPadding: const EdgeInsets.all(12),
-                leading: CircleAvatar(
-                  child: Text(
-                    produto.quantidade.toString(),
-                  ),
-                ),
-                title: Text(
-                  produto.nome,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                subtitle: Padding(
-                  padding: const EdgeInsets.only(top: 5),
-                  child: Text(
-                    'SKU: ${produto.sku.isEmpty ? '-' : produto.sku}\n'
-                    'Categoria: ${produto.categoria}\n'
-                    'Custo: R\$ ${produto.custo.toStringAsFixed(2)} • '
-                    'Venda: R\$ ${produto.venda.toStringAsFixed(2)}',
-                  ),
-                ),
-                isThreeLine: true,
-                trailing: PopupMenuButton<String>(
-                  onSelected: (opcao) {
-                    if (opcao == 'editar') {
-                      abrirProduto(produto);
-                    }
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  children: [
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: CircleAvatar(
+                        child: Text(
+                          produto.quantidade.toString(),
+                        ),
+                      ),
+                      title: Text(
+                        produto.nome,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      subtitle: Padding(
+                        padding: const EdgeInsets.only(top: 5),
+                        child: Text(
+                          'SKU: ${produto.sku.isEmpty ? '-' : produto.sku}\n'
+                          'Categoria: ${produto.categoria}\n'
+                          'Custo: ${moeda.format(produto.custo)} • '
+                          'Venda: ${moeda.format(produto.venda)}\n'
+                          'Lucro/un.: ${moeda.format(produto.lucroUnitario)}',
+                        ),
+                      ),
+                      isThreeLine: true,
+                      trailing: PopupMenuButton<String>(
+                        onSelected: (opcao) {
+                          if (opcao == 'editar') {
+                            abrirProduto(produto);
+                          }
 
-                    if (opcao == 'excluir') {
-                      excluirProduto(produto);
-                    }
-                  },
-                  itemBuilder: (context) => const [
-                    PopupMenuItem(
-                      value: 'editar',
-                      child: Text('Editar'),
+                          if (opcao == 'excluir') {
+                            excluirProduto(produto);
+                          }
+                        },
+                        itemBuilder: (context) => const [
+                          PopupMenuItem(
+                            value: 'editar',
+                            child: Text('Editar'),
+                          ),
+                          PopupMenuItem(
+                            value: 'excluir',
+                            child: Text('Excluir'),
+                          ),
+                        ],
+                      ),
                     ),
-                    PopupMenuItem(
-                      value: 'excluir',
-                      child: Text('Excluir'),
+
+                    const Divider(),
+
+                    Row(
+                      children: [
+                        const Text(
+                          'Quantidade:',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const Spacer(),
+                        IconButton(
+                          onPressed: produto.quantidade > 0
+                              ? () => alterarQuantidade(
+                                    produto,
+                                    produto.quantidade - 1,
+                                  )
+                              : null,
+                          icon: const Icon(
+                            Icons.remove_circle_outline,
+                          ),
+                        ),
+                        Text(
+                          '${produto.quantidade}',
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        IconButton(
+                          onPressed: () => alterarQuantidade(
+                            produto,
+                            produto.quantidade + 1,
+                          ),
+                          icon: const Icon(
+                            Icons.add_circle_outline,
+                          ),
+                        ),
+                      ],
                     ),
+
+                    if (produto.estoqueBaixo)
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          '⚠ Estoque baixo — mínimo: ${produto.estoqueMinimo}',
+                          style: const TextStyle(
+                            color: Colors.orange,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
                   ],
                 ),
               ),
@@ -854,183 +1430,176 @@ class _EstoquePageState extends State<EstoquePage> {
 // FINANCEIRO
 // ============================================================
 
-class FinanceiroPage extends StatefulWidget {
+class FinanceiroPage extends StatelessWidget {
   final List<Movimentacao> movimentacoes;
   final VoidCallback onAlterar;
+  final DateTime dataSelecionada;
 
   const FinanceiroPage({
     super.key,
     required this.movimentacoes,
     required this.onAlterar,
+    required this.dataSelecionada,
   });
 
   @override
-  State<FinanceiroPage> createState() => _FinanceiroPageState();
-}
-
-class _FinanceiroPageState extends State<FinanceiroPage> {
-  Future<void> adicionarMovimentacao(String tipo) async {
-    final descricaoController = TextEditingController();
-    final valorController = TextEditingController();
-
-    final resultado = await showDialog<bool>(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: Text(
-            tipo == 'entrada'
-                ? 'Nova entrada'
-                : 'Nova saída',
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: descricaoController,
-                decoration: const InputDecoration(
-                  labelText: 'Descrição',
-                ),
-              ),
-              TextField(
-                controller: valorController,
-                keyboardType:
-                    const TextInputType.numberWithOptions(
-                  decimal: true,
-                ),
-                decoration: const InputDecoration(
-                  labelText: 'Valor',
-                  prefixText: 'R\$ ',
-                ),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancelar'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Salvar'),
-            ),
-          ],
+  Widget build(BuildContext context) {
+    final ganhos = movimentacoes
+        .where((item) => item.tipo == 'ganho')
+        .fold<double>(
+          0,
+          (total, item) => total + item.valor,
         );
-      },
+
+    final gastos = movimentacoes
+        .where((item) => item.tipo == 'gasto')
+        .fold<double>(
+          0,
+          (total, item) => total + item.valor,
+        );
+
+    final saldo = ganhos - gastos;
+
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        const Text(
+          'Financeiro',
+          style: TextStyle(
+            fontSize: 28,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+
+        const SizedBox(height: 6),
+
+        Text(
+          'Todas as movimentações',
+          style: TextStyle(
+            color: Colors.grey.shade700,
+          ),
+        ),
+
+        const SizedBox(height: 16),
+
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(18),
+            child: Column(
+              children: [
+                _linhaResumo(
+                  'Ganhos',
+                  ganhos,
+                  Colors.green,
+                ),
+                _linhaResumo(
+                  'Gastos',
+                  gastos,
+                  Colors.red,
+                ),
+                const Divider(),
+                _linhaResumo(
+                  'Saldo',
+                  saldo,
+                  saldo >= 0 ? Colors.green : Colors.red,
+                ),
+              ],
+            ),
+          ),
+        ),
+
+        const SizedBox(height: 16),
+
+        ...movimentacoes.reversed.map(
+          (item) => Card(
+            child: ListTile(
+              leading: CircleAvatar(
+                child: Icon(
+                  item.tipo == 'ganho'
+                      ? Icons.arrow_upward
+                      : Icons.arrow_downward,
+                ),
+              ),
+              title: Text(
+                item.descricao.isEmpty
+                    ? item.categoria
+                    : item.descricao,
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              subtitle: Text(
+                '${item.categoria} • ${_formatarData(item.data)}',
+              ),
+              trailing: Text(
+                '${item.tipo == 'ganho' ? '+' : '-'} '
+                '${moeda.format(item.valor)}',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: item.tipo == 'ganho'
+                      ? Colors.green
+                      : Colors.red,
+                ),
+              ),
+            ),
+          ),
+        ),
+
+        if (movimentacoes.isEmpty)
+          const Card(
+            child: Padding(
+              padding: EdgeInsets.all(24),
+              child: Center(
+                child: Text(
+                  'Nenhuma movimentação cadastrada.',
+                ),
+              ),
+            ),
+          ),
+      ],
     );
-
-    if (resultado != true) return;
-
-    final valor = double.tryParse(
-          valorController.text.replaceAll(',', '.'),
-        ) ??
-        0;
-
-    if (valor <= 0) return;
-
-    final movimentacao = Movimentacao(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
-      tipo: tipo,
-      descricao: descricaoController.text.trim(),
-      valor: valor,
-      data: DateTime.now(),
-    );
-
-    final lista = [
-      ...widget.movimentacoes,
-      movimentacao,
-    ];
-
-    await AppStorage.salvarMovimentacoes(lista);
-
-    widget.onAlterar();
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      body: ListView(
-        padding: const EdgeInsets.all(16),
+  Widget _linhaResumo(
+    String titulo,
+    double valor,
+    Color cor,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+        vertical: 6,
+      ),
+      child: Row(
         children: [
-          const Text(
-            'Financeiro',
-            style: TextStyle(
-              fontSize: 28,
+          Text(
+            titulo,
+            style: const TextStyle(
               fontWeight: FontWeight.bold,
             ),
           ),
-
-          const SizedBox(height: 16),
-
-          Row(
-            children: [
-              Expanded(
-                child: FilledButton.icon(
-                  onPressed: () =>
-                      adicionarMovimentacao('entrada'),
-                  icon: const Icon(Icons.arrow_downward),
-                  label: const Text('Entrada'),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: () =>
-                      adicionarMovimentacao('saida'),
-                  icon: const Icon(Icons.arrow_upward),
-                  label: const Text('Saída'),
-                ),
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 20),
-
-          if (widget.movimentacoes.isEmpty)
-            const Card(
-              child: Padding(
-                padding: EdgeInsets.all(24),
-                child: Center(
-                  child: Text(
-                    'Nenhuma movimentação cadastrada.',
-                  ),
-                ),
-              ),
-            ),
-
-          ...widget.movimentacoes.reversed.map(
-            (item) => Card(
-              child: ListTile(
-                leading: CircleAvatar(
-                  child: Icon(
-                    item.tipo == 'entrada'
-                        ? Icons.arrow_downward
-                        : Icons.arrow_upward,
-                  ),
-                ),
-                title: Text(
-                  item.descricao.isEmpty
-                      ? 'Movimentação'
-                      : item.descricao,
-                ),
-                subtitle: Text(
-                  '${item.data.day.toString().padLeft(2, '0')}/'
-                  '${item.data.month.toString().padLeft(2, '0')}/'
-                  '${item.data.year}',
-                ),
-                trailing: Text(
-                  '${item.tipo == 'entrada' ? '+' : '-'} '
-                  'R\$ ${item.valor.toStringAsFixed(2)}',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
+          const Spacer(),
+          Text(
+            moeda.format(valor),
+            style: TextStyle(
+              color: cor,
+              fontWeight: FontWeight.bold,
             ),
           ),
         ],
       ),
     );
+  }
+
+  String _formatarData(String data) {
+    try {
+      final partes = data.split('-');
+
+      if (partes.length == 3) {
+        return '${partes[2]}/${partes[1]}/${partes[0]}';
+      }
+    } catch (_) {}
+
+    return data;
   }
 }
 
@@ -1039,23 +1608,48 @@ class _FinanceiroPageState extends State<FinanceiroPage> {
 // ============================================================
 
 class RelatoriosPage extends StatelessWidget {
-  final double entradas;
-  final double saidas;
-  final double saldo;
-  final double valorEstoque;
   final List<Produto> produtos;
+  final List<Movimentacao> movimentacoes;
 
   const RelatoriosPage({
     super.key,
-    required this.entradas,
-    required this.saidas,
-    required this.saldo,
-    required this.valorEstoque,
     required this.produtos,
+    required this.movimentacoes,
   });
 
   @override
   Widget build(BuildContext context) {
+    final ganhos = movimentacoes
+        .where((item) => item.tipo == 'ganho')
+        .fold<double>(
+          0,
+          (total, item) => total + item.valor,
+        );
+
+    final gastos = movimentacoes
+        .where((item) => item.tipo == 'gasto')
+        .fold<double>(
+          0,
+          (total, item) => total + item.valor,
+        );
+
+    final saldo = ganhos - gastos;
+
+    final valorEstoque = produtos.fold<double>(
+      0,
+      (total, produto) => total + produto.valorEstoque,
+    );
+
+    final valorVenda = produtos.fold<double>(
+      0,
+      (total, produto) => total + produto.valorVendaEstoque,
+    );
+
+    final lucroEstoque = produtos.fold<double>(
+      0,
+      (total, produto) => total + produto.lucroEstoque,
+    );
+
     final estoqueBaixo =
         produtos.where((produto) => produto.estoqueBaixo).length;
 
@@ -1070,69 +1664,131 @@ class RelatoriosPage extends StatelessWidget {
           ),
         ),
 
-        const SizedBox(height: 20),
+        const SizedBox(height: 18),
+
+        const Text(
+          'Financeiro',
+          style: TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+
+        const SizedBox(height: 8),
 
         Card(
           child: Padding(
             padding: const EdgeInsets.all(18),
             child: Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'Resumo financeiro',
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                  ),
+                _linha(
+                  'Total de ganhos',
+                  moeda.format(ganhos),
                 ),
-                const SizedBox(height: 15),
-                Text(
-                  'Entradas: R\$ ${entradas.toStringAsFixed(2)}',
+                _linha(
+                  'Total de gastos',
+                  moeda.format(gastos),
                 ),
-                Text(
-                  'Saídas: R\$ ${saidas.toStringAsFixed(2)}',
-                ),
-                Text(
-                  'Saldo: R\$ ${saldo.toStringAsFixed(2)}',
+                const Divider(),
+                _linha(
+                  'Saldo',
+                  moeda.format(saldo),
                 ),
               ],
             ),
           ),
         ),
 
-        const SizedBox(height: 12),
+        const SizedBox(height: 18),
+
+        const Text(
+          'Estoque',
+          style: TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+
+        const SizedBox(height: 8),
 
         Card(
-          child: ListTile(
-            leading: const Icon(Icons.inventory_2),
-            title: const Text('Valor do estoque'),
-            subtitle: Text(
-              'R\$ ${valorEstoque.toStringAsFixed(2)}',
+          child: Padding(
+            padding: const EdgeInsets.all(18),
+            child: Column(
+              children: [
+                _linha(
+                  'Produtos cadastrados',
+                  '${produtos.length}',
+                ),
+                _linha(
+                  'Valor investido',
+                  moeda.format(valorEstoque),
+                ),
+                _linha(
+                  'Valor de venda previsto',
+                  moeda.format(valorVenda),
+                ),
+                _linha(
+                  'Lucro potencial',
+                  moeda.format(lucroEstoque),
+                ),
+                _linha(
+                  'Estoque baixo',
+                  '$estoqueBaixo produto(s)',
+                ),
+              ],
             ),
           ),
         ),
 
-        Card(
-          child: ListTile(
-            leading: const Icon(Icons.inventory),
-            title: const Text('Produtos cadastrados'),
-            subtitle: Text(
-              '${produtos.length} produtos',
-            ),
+        const SizedBox(height: 18),
+
+        const Text(
+          'Resumo geral',
+          style: TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
           ),
         ),
 
+        const SizedBox(height: 8),
+
         Card(
           child: ListTile(
-            leading: const Icon(Icons.warning_amber),
-            title: const Text('Estoque baixo'),
+            leading: const Icon(Icons.receipt_long),
+            title: const Text(
+              'Movimentações registradas',
+            ),
             subtitle: Text(
-              '$estoqueBaixo produto(s) abaixo do mínimo',
+              '${movimentacoes.length} movimentação(ões)',
             ),
           ),
         ),
       ],
+    );
+  }
+
+  Widget _linha(
+    String titulo,
+    String valor,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+        vertical: 7,
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(titulo),
+          ),
+          Text(
+            valor,
+            style: const TextStyle(
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
