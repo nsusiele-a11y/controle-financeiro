@@ -1,45 +1,31 @@
-name: Gerar APK Android
+name: Gerar APK
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Baixar código
+      - name: Baixar codigo
         uses: actions/checkout@v4
 
       - name: Configurar Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: "3.35.0"
           channel: stable
-          cache: true
 
-      - name: Criar estrutura Flutter
-        run: flutter create --project-name controle_financeiro --platforms=android,web .
-
-      - name: Adicionar dependência shared_preferences
-        run: flutter pub add shared_preferences
-
-      - name: Instalar dependências
+      - name: Instalar dependencias
         run: flutter pub get
 
-      - name: Remover teste padrão do Flutter
-        run: rm -f test/widget_test.dart
-
-      - name: Analisar projeto
+      - name: Verificar projeto
         run: flutter analyze
 
       - name: Gerar APK
         run: flutter build apk --release
 
-      - name: Salvar APK
+      - name: Disponibilizar APK
         uses: actions/upload-artifact@v4
         with:
           name: controle-financeiro-apk
