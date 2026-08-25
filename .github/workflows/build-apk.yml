@@ -15,11 +15,28 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           channel: stable
+          flutter-version: '3.35.2'
+
+      - name: Verificar arquivos
+        run: |
+          echo "Pasta atual:"
+          pwd
+          echo "Arquivos:"
+          ls -la
+
+      - name: Criar projeto Flutter
+        run: |
+          if [ ! -f pubspec.yaml ]; then
+            echo "pubspec.yaml nao encontrado. Criando projeto Flutter..."
+            flutter create .
+          else
+            echo "pubspec.yaml encontrado."
+          fi
 
       - name: Instalar dependencias
         run: flutter pub get
 
-      - name: Verificar projeto
+      - name: Verificar Dart
         run: flutter analyze
 
       - name: Gerar APK
