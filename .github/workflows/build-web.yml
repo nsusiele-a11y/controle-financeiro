@@ -1,69 +1,52 @@
-name: Gerar e publicar versão Web
+name: Gerar Web
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
-
-permissions:
-  contents: read
-  pages: write
-  id-token: write
-
-concurrency:
-  group: pages
-  cancel-in-progress: true
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Baixar código
+      - name: Baixar codigo
         uses: actions/checkout@v4
 
       - name: Configurar Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: "3.35.0"
           channel: stable
-          cache: true
 
       - name: Criar estrutura Flutter
-        run: flutter create --project-name controle_financeiro --platforms=android,web .
+        run: |
+          flutter create . --project-name controle_financeiro --platforms=web
 
-      - name: Adicionar shared_preferences
-        run: flutter pub add shared_preferences
+      - name: Instalar dependencias
+        run: |
+          flutter pub add shared_preferences
+          flutter pub add intl
+          flutter pub get
 
-      - name: Instalar dependências
-        run: flutter pub get
+      - name: Verificar aplicativo
+        run: flutter analyze lib
 
-      - name: Remover teste padrão
-        run: rm -f test/widget_test.dart
+      - name: Gerar Web
+        run: flutter build web --release
 
-      - name: Analisar projeto
-        run: flutter analyze
-
-      - name: Gerar versão Web
-        run: flutter build web --release --base-href "/controle-financeiro/"
-
-      - name: Configurar GitHub Pages
-        uses: actions/configure-pages@v5
-
-      - name: Preparar arquivos do Pages
+      - name: Publicar Web
         uses: actions/upload-pages-artifact@v3
         with:
           path: build/web
 
   deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
-
-    runs-on: ubuntu-latest
-
-    needs: build
 
     steps:
       - name: Publicar no GitHub Pages
