@@ -2,6 +2,7 @@ name: Gerar APK
 
 on:
   workflow_dispatch:
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -15,11 +16,11 @@ jobs:
         with:
           channel: stable
 
-      - name: Criar estrutura Flutter
-        run: flutter create .
-
       - name: Instalar dependencias
         run: flutter pub get
+
+      - name: Verificar codigo
+        run: flutter analyze
 
       - name: Gerar APK
         run: flutter build apk --release
