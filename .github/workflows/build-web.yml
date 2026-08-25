@@ -3,6 +3,11 @@ name: Gerar Web
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -30,9 +35,11 @@ jobs:
         run: flutter analyze lib
 
       - name: Gerar Web
-        run: flutter build web --release
+        run: |
+          flutter build web --release \
+            --base-href "/controle-financeiro/"
 
-      - name: Publicar Web
+      - name: Publicar arquivos
         uses: actions/upload-pages-artifact@v3
         with:
           path: build/web
@@ -40,13 +47,14 @@ jobs:
   deploy:
     needs: build
     runs-on: ubuntu-latest
-    permissions:
-      pages: write
-      id-token: write
 
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
+
+    permissions:
+      pages: write
+      id-token: write
 
     steps:
       - name: Publicar no GitHub Pages
