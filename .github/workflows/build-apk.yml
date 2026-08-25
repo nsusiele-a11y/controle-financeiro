@@ -16,18 +16,9 @@ jobs:
         with:
           channel: stable
 
-      - name: Verificar projeto
+      - name: Criar estrutura Flutter
         run: |
-          echo "Arquivos do projeto:"
-          ls -la
-          echo "Conteudo do pubspec.yaml:"
-          cat pubspec.yaml
-
-      - name: Criar projeto Flutter se necessario
-        run: |
-          if [ ! -f pubspec.yaml ]; then
-            flutter create . --project-name controle_financeiro --platforms=android
-          fi
+          flutter create . --project-name controle_financeiro --platforms=android
 
       - name: Instalar dependencias do aplicativo
         run: |
