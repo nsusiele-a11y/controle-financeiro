@@ -189,8 +189,7 @@ class Storage {
           final decoded = jsonDecode(item);
 
           if (decoded is Map<String, dynamic>) {
-            final movimentacao =
-                Movimentacao.fromMap(decoded);
+            final movimentacao = Movimentacao.fromMap(decoded);
 
             if (movimentacao.id.isNotEmpty) {
               resultado.add(movimentacao);
@@ -1133,13 +1132,19 @@ class _HomePageState extends State<HomePage> {
       body: SafeArea(
         child: paginas[pagina],
       ),
+
+      // ========================================================
+      // BOTÃO SALVAR DIRETAMENTE
+      // ========================================================
       floatingActionButton:
-          FloatingActionButton.small(
-        onPressed: abrirMenuDados,
-        child: const Icon(
+          FloatingActionButton.extended(
+        onPressed: salvarAgora,
+        icon: const Icon(
           Icons.save_outlined,
         ),
+        label: const Text('Salvar'),
       ),
+
       bottomNavigationBar:
           NavigationBar(
         selectedIndex: pagina,
