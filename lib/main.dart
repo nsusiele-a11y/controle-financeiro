@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -165,140 +166,334 @@ class Storage {
   static const String estoqueKey = 'estoque';
   static const String servicosKey = 'servicos';
 
-  static Future<List<Movimentacao>> movimentacoes() async {
-    final prefs = await SharedPreferences.getInstance();
+  static const String backupVersion = '1';
 
-    final lista = prefs.getStringList(movimentacoesKey);
+  static SharedPreferences? _prefs;
 
-    if (lista == null) return [];
-
-    return lista.map((item) {
-      return Movimentacao.fromMap(
-        jsonDecode(item) as Map<String, dynamic>,
-      );
-    }).toList();
+  static Future<SharedPreferences> _getPrefs() async {
+    _prefs ??= await SharedPreferences.getInstance();
+    return _prefs!;
   }
 
-  static Future<void> salvarMovimentacoes(
+  static Future<List<Movimentacao>> movimentacoes() async {
+    try {
+      final prefs = await _getPrefs();
+
+      final lista = prefs.getStringList(movimentacoesKey);
+
+      if (lista == null) return [];
+
+      return lista.map((item) {
+        final decoded = jsonDecode(item);
+
+        if (decoded is Map<String, dynamic>) {
+          return Movimentacao.fromMap(decoded);
+        }
+
+        return Movimentacao(
+          id: '',
+          tipo: 'gasto',
+          categoria: '',
+          valor: 0,
+          data: '',
+        );
+      }).where((item) => item.id.isNotEmpty).toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  static Future<bool> salvarMovimentacoes(
     List<Movimentacao> lista,
   ) async {
-    final prefs = await SharedPreferences.getInstance();
+    try {
+      final prefs = await _getPrefs();
 
-    await prefs.setStringList(
-      movimentacoesKey,
-      lista.map((item) => jsonEncode(item.toMap())).toList(),
-    );
+      return await prefs.setStringList(
+        movimentacoesKey,
+        lista.map((item) => jsonEncode(item.toMap())).toList(),
+      );
+    } catch (_) {
+      return false;
+    }
   }
 
   static Future<List<Produto>> estoque() async {
-    final prefs = await SharedPreferences.getInstance();
+    try {
+      final prefs = await _getPrefs();
 
-    final lista = prefs.getStringList(estoqueKey);
+      final lista = prefs.getStringList(estoqueKey);
 
-    if (lista == null) return [];
+      if (lista == null) return [];
 
-    return lista.map((item) {
-      return Produto.fromMap(
-        jsonDecode(item) as Map<String, dynamic>,
-      );
-    }).toList();
+      return lista.map((item) {
+        final decoded = jsonDecode(item);
+
+        if (decoded is Map<String, dynamic>) {
+          return Produto.fromMap(decoded);
+        }
+
+        return Produto(
+          id: '',
+          nome: '',
+          quantidade: 0,
+          estoqueMinimo: 0,
+          precoCompra: 0,
+          precoVenda: 0,
+        );
+      }).where((item) => item.id.isNotEmpty).toList();
+    } catch (_) {
+      return [];
+    }
   }
 
-  static Future<void> salvarEstoque(
+  static Future<bool> salvarEstoque(
     List<Produto> lista,
   ) async {
-    final prefs = await SharedPreferences.getInstance();
+    try {
+      final prefs = await _getPrefs();
 
-    await prefs.setStringList(
-      estoqueKey,
-      lista.map((item) => jsonEncode(item.toMap())).toList(),
-    );
+      return await prefs.setStringList(
+        estoqueKey,
+        lista.map((item) => jsonEncode(item.toMap())).toList(),
+      );
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static List<Servico> servicosPadrao() {
+    return const [
+      Servico(
+        id: 'cilios',
+        nome: 'Cílios normal',
+        valor: 120,
+        icone: Icons.remove_red_eye,
+      ),
+      Servico(
+        id: 'fox',
+        nome: 'Fox',
+        valor: 150,
+        icone: Icons.auto_awesome,
+      ),
+      Servico(
+        id: 'sobrancelha',
+        nome: 'Sobrancelha',
+        valor: 30,
+        icone: Icons.face,
+      ),
+      Servico(
+        id: 'manutencao',
+        nome: 'Manutenção',
+        valor: 80,
+        icone: Icons.build,
+      ),
+    ];
   }
 
   static Future<List<Servico>> servicos() async {
-    final prefs = await SharedPreferences.getInstance();
+    try {
+      final prefs = await _getPrefs();
 
-    final dados = prefs.getStringList(servicosKey);
+      final dados = prefs.getStringList(servicosKey);
 
-    if (dados == null) {
-      return [
-        const Servico(
-          id: 'cilios',
-          nome: 'Cílios normal',
-          valor: 120,
-          icone: Icons.remove_red_eye,
-        ),
-        const Servico(
-          id: 'fox',
-          nome: 'Fox',
-          valor: 150,
-          icone: Icons.auto_awesome,
-        ),
-        const Servico(
-          id: 'sobrancelha',
-          nome: 'Sobrancelha',
-          valor: 30,
-          icone: Icons.face,
-        ),
-        const Servico(
-          id: 'manutencao',
-          nome: 'Manutenção',
-          valor: 80,
-          icone: Icons.build,
-        ),
-      ];
-    }
-
-    final lista = <Servico>[];
-
-    for (final item in dados) {
-      final mapa = jsonDecode(item) as Map<String, dynamic>;
-
-      IconData icone = Icons.auto_awesome;
-
-      switch (mapa['id']) {
-        case 'cilios':
-          icone = Icons.remove_red_eye;
-          break;
-        case 'fox':
-          icone = Icons.auto_awesome;
-          break;
-        case 'sobrancelha':
-          icone = Icons.face;
-          break;
-        case 'manutencao':
-          icone = Icons.build;
-          break;
+      if (dados == null) {
+        return servicosPadrao();
       }
 
-      lista.add(
-        Servico(
-          id: mapa['id'].toString(),
-          nome: mapa['nome'].toString(),
-          valor: (mapa['valor'] as num).toDouble(),
-          icone: icone,
-        ),
-      );
-    }
+      final lista = <Servico>[];
 
-    return lista;
+      for (final item in dados) {
+        final mapa = jsonDecode(item) as Map<String, dynamic>;
+
+        IconData icone = Icons.auto_awesome;
+
+        switch (mapa['id']) {
+          case 'cilios':
+            icone = Icons.remove_red_eye;
+            break;
+          case 'fox':
+            icone = Icons.auto_awesome;
+            break;
+          case 'sobrancelha':
+            icone = Icons.face;
+            break;
+          case 'manutencao':
+            icone = Icons.build;
+            break;
+        }
+
+        lista.add(
+          Servico(
+            id: mapa['id']?.toString() ?? '',
+            nome: mapa['nome']?.toString() ?? '',
+            valor: (mapa['valor'] as num?)?.toDouble() ?? 0,
+            icone: icone,
+          ),
+        );
+      }
+
+      return lista;
+    } catch (_) {
+      return servicosPadrao();
+    }
   }
 
-  static Future<void> salvarServicos(
+  static Future<bool> salvarServicos(
     List<Servico> lista,
   ) async {
-    final prefs = await SharedPreferences.getInstance();
+    try {
+      final prefs = await _getPrefs();
 
-    await prefs.setStringList(
-      servicosKey,
-      lista.map((item) {
-        return jsonEncode({
+      return await prefs.setStringList(
+        servicosKey,
+        lista.map((item) {
+          return jsonEncode({
+            'id': item.id,
+            'nome': item.nome,
+            'valor': item.valor,
+          });
+        }).toList(),
+      );
+    } catch (_) {
+      return false;
+    }
+  }
+
+  // ==========================================================
+  // BACKUP
+  // ==========================================================
+
+  static Future<String> criarBackup() async {
+    final movimentacoesLista = await movimentacoes();
+    final estoqueLista = await estoque();
+    final servicosLista = await servicos();
+
+    final backup = {
+      'app': 'Meu Controle',
+      'versaoBackup': backupVersion,
+      'dataBackup': DateTime.now().toIso8601String(),
+      'movimentacoes':
+          movimentacoesLista.map((item) => item.toMap()).toList(),
+      'estoque':
+          estoqueLista.map((item) => item.toMap()).toList(),
+      'servicos': servicosLista.map((item) {
+        return {
           'id': item.id,
           'nome': item.nome,
           'valor': item.valor,
-        });
+        };
       }).toList(),
-    );
+    };
+
+    return const JsonEncoder.withIndent('  ').convert(backup);
+  }
+
+  static Future<bool> restaurarBackup(String texto) async {
+    try {
+      final decoded = jsonDecode(texto);
+
+      if (decoded is! Map<String, dynamic>) {
+        return false;
+      }
+
+      if (decoded['app'] != 'Meu Controle') {
+        return false;
+      }
+
+      final movimentacoesDados = decoded['movimentacoes'];
+
+      final estoqueDados = decoded['estoque'];
+
+      final servicosDados = decoded['servicos'];
+
+      if (movimentacoesDados is! List ||
+          estoqueDados is! List ||
+          servicosDados is! List) {
+        return false;
+      }
+
+      final novasMovimentacoes = <Movimentacao>[];
+
+      for (final item in movimentacoesDados) {
+        if (item is Map<String, dynamic>) {
+          novasMovimentacoes.add(
+            Movimentacao.fromMap(item),
+          );
+        }
+      }
+
+      final novoEstoque = <Produto>[];
+
+      for (final item in estoqueDados) {
+        if (item is Map<String, dynamic>) {
+          novoEstoque.add(
+            Produto.fromMap(item),
+          );
+        }
+      }
+
+      final novosServicos = <Servico>[];
+
+      for (final item in servicosDados) {
+        if (item is Map<String, dynamic>) {
+          IconData icone = Icons.auto_awesome;
+
+          switch (item['id']) {
+            case 'cilios':
+              icone = Icons.remove_red_eye;
+              break;
+            case 'fox':
+              icone = Icons.auto_awesome;
+              break;
+            case 'sobrancelha':
+              icone = Icons.face;
+              break;
+            case 'manutencao':
+              icone = Icons.build;
+              break;
+          }
+
+          novosServicos.add(
+            Servico(
+              id: item['id']?.toString() ?? '',
+              nome: item['nome']?.toString() ?? '',
+              valor: (item['valor'] as num?)?.toDouble() ?? 0,
+              icone: icone,
+            ),
+          );
+        }
+      }
+
+      final salvouMovimentacoes =
+          await salvarMovimentacoes(novasMovimentacoes);
+
+      final salvouEstoque =
+          await salvarEstoque(novoEstoque);
+
+      final salvouServicos =
+          await salvarServicos(novosServicos);
+
+      return salvouMovimentacoes &&
+          salvouEstoque &&
+          salvouServicos;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static Future<bool> limparTodosOsDados() async {
+    try {
+      final prefs = await _getPrefs();
+
+      final a = await prefs.remove(movimentacoesKey);
+      final b = await prefs.remove(estoqueKey);
+      final c = await prefs.remove(servicosKey);
+
+      return a || b || c;
+    } catch (_) {
+      return false;
+    }
   }
 }
 
@@ -342,6 +537,19 @@ class _HomePageState extends State<HomePage> {
 
   DateTime dataSelecionada = DateTime.now();
 
+  Future<void> mostrarMensagem(String mensagem) async {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(mensagem),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+  }
+
   Future<void> registrarGanho(
     String categoria,
     double valor,
@@ -358,9 +566,19 @@ class _HomePageState extends State<HomePage> {
       ),
     );
 
-    await Storage.salvarMovimentacoes(lista);
+    final salvou =
+        await Storage.salvarMovimentacoes(lista);
 
-    setState(() {});
+    if (!salvou) {
+      await mostrarMensagem(
+        'Não foi possível salvar o ganho.',
+      );
+      return;
+    }
+
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   Future<void> adicionarGasto() async {
@@ -377,6 +595,7 @@ class _HomePageState extends State<HomePage> {
             children: [
               TextField(
                 controller: categoria,
+                autofocus: true,
                 decoration: const InputDecoration(
                   labelText: 'Descrição',
                   prefixIcon: Icon(Icons.description),
@@ -385,7 +604,8 @@ class _HomePageState extends State<HomePage> {
               const SizedBox(height: 10),
               TextField(
                 controller: valor,
-                keyboardType: const TextInputType.numberWithOptions(
+                keyboardType:
+                    const TextInputType.numberWithOptions(
                   decimal: true,
                 ),
                 decoration: const InputDecoration(
@@ -397,19 +617,22 @@ class _HomePageState extends State<HomePage> {
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(context, false),
+              onPressed: () =>
+                  Navigator.pop(context, false),
               child: const Text('Cancelar'),
             ),
             FilledButton(
               onPressed: () async {
-                final valorFinal = valorNumero(valor.text);
+                final valorFinal =
+                    valorNumero(valor.text);
 
                 if (categoria.text.trim().isEmpty ||
                     valorFinal <= 0) {
                   return;
                 }
 
-                final lista = await Storage.movimentacoes();
+                final lista =
+                    await Storage.movimentacoes();
 
                 lista.add(
                   Movimentacao(
@@ -417,13 +640,20 @@ class _HomePageState extends State<HomePage> {
                         .microsecondsSinceEpoch
                         .toString(),
                     tipo: 'gasto',
-                    categoria: categoria.text.trim(),
+                    categoria:
+                        categoria.text.trim(),
                     valor: valorFinal,
-                    data: dataBanco(dataSelecionada),
+                    data:
+                        dataBanco(dataSelecionada),
                   ),
                 );
 
-                await Storage.salvarMovimentacoes(lista);
+                final salvou =
+                    await Storage.salvarMovimentacoes(
+                  lista,
+                );
+
+                if (!salvou) return;
 
                 if (context.mounted) {
                   Navigator.pop(context, true);
@@ -439,7 +669,7 @@ class _HomePageState extends State<HomePage> {
     categoria.dispose();
     valor.dispose();
 
-    if (resultado == true) {
+    if (resultado == true && mounted) {
       setState(() {});
     }
   }
@@ -468,7 +698,8 @@ class _HomePageState extends State<HomePage> {
               const SizedBox(height: 10),
               TextField(
                 controller: valor,
-                keyboardType: const TextInputType.numberWithOptions(
+                keyboardType:
+                    const TextInputType.numberWithOptions(
                   decimal: true,
                 ),
                 decoration: const InputDecoration(
@@ -480,15 +711,20 @@ class _HomePageState extends State<HomePage> {
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(context),
+              onPressed: () =>
+                  Navigator.pop(context),
               child: const Text('Cancelar'),
             ),
             FilledButton(
               onPressed: () {
-                final valorFinal = valorNumero(valor.text);
+                final valorFinal =
+                    valorNumero(valor.text);
 
                 if (valorFinal > 0) {
-                  Navigator.pop(context, valorFinal);
+                  Navigator.pop(
+                    context,
+                    valorFinal,
+                  );
                 }
               },
               child: const Text('Adicionar'),
@@ -519,11 +755,284 @@ class _HomePageState extends State<HomePage> {
       lastDate: DateTime(2100),
     );
 
-    if (data != null) {
+    if (data != null && mounted) {
       setState(() {
         dataSelecionada = data;
       });
     }
+  }
+
+  // ==========================================================
+  // TELA DE BACKUP
+  // ==========================================================
+
+  Future<void> abrirBackup() async {
+    final backupController =
+        TextEditingController();
+
+    final backup = await Storage.criarBackup();
+
+    if (!mounted) return;
+
+    backupController.text = backup;
+
+    await showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Backup dos dados'),
+          content: SizedBox(
+            width: 600,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'Exporte seu backup copiando o código abaixo. '
+                      'Guarde esse conteúdo em um local seguro.',
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: backupController,
+                    readOnly: true,
+                    maxLines: 12,
+                    style: const TextStyle(
+                      fontSize: 11,
+                    ),
+                    decoration: const InputDecoration(
+                      border: OutlineInputBorder(),
+                      hintText: 'Backup',
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () =>
+                  Navigator.pop(context),
+              child: const Text('Fechar'),
+            ),
+            FilledButton.icon(
+              onPressed: () async {
+                await Clipboard.setData(
+                  ClipboardData(
+                    text: backupController.text,
+                  ),
+                );
+
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context)
+                    .showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                      'Backup copiado. Guarde o código em um local seguro.',
+                    ),
+                  ),
+                );
+                }
+              },
+              icon: const Icon(Icons.copy),
+              label: const Text('Copiar backup'),
+            ),
+          ],
+        );
+      },
+    );
+
+    backupController.dispose();
+  }
+
+  Future<void> restaurarBackup() async {
+    final controller = TextEditingController();
+
+    final resultado = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Restaurar backup'),
+          content: SizedBox(
+            width: 600,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'Cole aqui o código do backup que você salvou anteriormente.',
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: controller,
+                    maxLines: 12,
+                    decoration: const InputDecoration(
+                      border: OutlineInputBorder(),
+                      hintText: 'Cole o backup aqui',
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () =>
+                  Navigator.pop(context, false),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton.icon(
+              onPressed: () async {
+                if (controller.text.trim().isEmpty) {
+                  return;
+                }
+
+                final sucesso =
+                    await Storage.restaurarBackup(
+                  controller.text.trim(),
+                );
+
+                if (!context.mounted) return;
+
+                if (sucesso) {
+                  Navigator.pop(context, true);
+                } else {
+                  ScaffoldMessenger.of(context)
+                    .showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                      'Backup inválido ou corrompido.',
+                    ),
+                  ),
+                );
+                }
+              },
+              icon: const Icon(Icons.restore),
+              label: const Text('Restaurar'),
+            ),
+          ],
+        );
+      },
+    );
+
+    controller.dispose();
+
+    if (resultado == true && mounted) {
+      setState(() {});
+      await mostrarMensagem(
+        'Backup restaurado com sucesso.',
+      );
+    }
+  }
+
+  Future<void> abrirMenuDados() async {
+    await showModalBottomSheet(
+      context: context,
+      showDragHandle: true,
+      builder: (context) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Dados e backup',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                ListTile(
+                  leading: const Icon(
+                    Icons.save,
+                  ),
+                  title: const Text(
+                    'Salvar agora',
+                  ),
+                  subtitle: const Text(
+                    'Confirma o salvamento dos dados atuais',
+                  ),
+                  onTap: () async {
+                    Navigator.pop(context);
+
+                    final movimentacoes =
+                        await Storage.movimentacoes();
+
+                    final estoque =
+                        await Storage.estoque();
+
+                    final servicos =
+                        await Storage.servicos();
+
+                    final a =
+                        await Storage.salvarMovimentacoes(
+                      movimentacoes,
+                    );
+
+                    final b =
+                        await Storage.salvarEstoque(
+                      estoque,
+                    );
+
+                    final c =
+                        await Storage.salvarServicos(
+                      servicos,
+                    );
+
+                    if (a && b && c) {
+                      await mostrarMensagem(
+                        'Dados salvos com sucesso.',
+                      );
+                    } else {
+                      await mostrarMensagem(
+                        'Não foi possível salvar todos os dados.',
+                      );
+                    }
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(
+                    Icons.file_upload_outlined,
+                  ),
+                  title: const Text(
+                    'Exportar backup',
+                  ),
+                  subtitle: const Text(
+                    'Copiar uma cópia completa dos dados',
+                  ),
+                  onTap: () {
+                    Navigator.pop(context);
+                    abrirBackup();
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(
+                    Icons.restore,
+                  ),
+                  title: const Text(
+                    'Restaurar backup',
+                  ),
+                  subtitle: const Text(
+                    'Recuperar dados de um backup',
+                  ),
+                  onTap: () {
+                    Navigator.pop(context);
+                    restaurarBackup();
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   @override
@@ -544,6 +1053,44 @@ class _HomePageState extends State<HomePage> {
       body: SafeArea(
         child: paginas[pagina],
       ),
+      appBar: pagina == 0
+          ? null
+          : AppBar(
+              title: Text(
+                pagina == 1
+                    ? 'Estoque'
+                    : 'Histórico',
+              ),
+              backgroundColor:
+                  Colors.transparent,
+              elevation: 0,
+              actions: [
+                IconButton(
+                  onPressed: () {
+                    setState(() {});
+                  },
+                  icon: const Icon(
+                    Icons.refresh,
+                  ),
+                  tooltip: 'Atualizar',
+                ),
+                IconButton(
+                  onPressed: abrirMenuDados,
+                  icon: const Icon(
+                    Icons.cloud_sync_outlined,
+                  ),
+                  tooltip: 'Dados e backup',
+                ),
+              ],
+            ),
+      floatingActionButton: pagina == 0
+          ? FloatingActionButton.small(
+              onPressed: abrirMenuDados,
+              child: const Icon(
+                Icons.save_outlined,
+              ),
+            )
+          : null,
       bottomNavigationBar: NavigationBar(
         selectedIndex: pagina,
         onDestinationSelected: (index) {
@@ -553,18 +1100,30 @@ class _HomePageState extends State<HomePage> {
         },
         destinations: const [
           NavigationDestination(
-            icon: Icon(Icons.dashboard_outlined),
-            selectedIcon: Icon(Icons.dashboard),
+            icon: Icon(
+              Icons.dashboard_outlined,
+            ),
+            selectedIcon: Icon(
+              Icons.dashboard,
+            ),
             label: 'Resumo',
           ),
           NavigationDestination(
-            icon: Icon(Icons.inventory_2_outlined),
-            selectedIcon: Icon(Icons.inventory_2),
+            icon: Icon(
+              Icons.inventory_2_outlined,
+            ),
+            selectedIcon: Icon(
+              Icons.inventory_2,
+            ),
             label: 'Estoque',
           ),
           NavigationDestination(
-            icon: Icon(Icons.history),
-            selectedIcon: Icon(Icons.history),
+            icon: Icon(
+              Icons.history,
+            ),
+            selectedIcon: Icon(
+              Icons.history,
+            ),
             label: 'Histórico',
           ),
         ],
@@ -595,10 +1154,12 @@ class DashboardPage extends StatefulWidget {
   });
 
   @override
-  State<DashboardPage> createState() => _DashboardPageState();
+  State<DashboardPage> createState() =>
+      _DashboardPageState();
 }
 
-class _DashboardPageState extends State<DashboardPage> {
+class _DashboardPageState
+    extends State<DashboardPage> {
   double ganhos = 0;
   double gastos = 0;
   int atendimentos = 0;
@@ -606,8 +1167,11 @@ class _DashboardPageState extends State<DashboardPage> {
   List<Servico> servicos = [];
 
   Future<void> carregar() async {
-    final lista = await Storage.movimentacoes();
-    final servicosSalvos = await Storage.servicos();
+    final lista =
+        await Storage.movimentacoes();
+
+    final servicosSalvos =
+        await Storage.servicos();
 
     final data = dataBanco(widget.data);
 
@@ -631,7 +1195,8 @@ class _DashboardPageState extends State<DashboardPage> {
     setState(() {
       ganhos = totalGanhos;
       gastos = totalGastos;
-      atendimentos = totalAtendimentos;
+      atendimentos =
+          totalAtendimentos;
       servicos = servicosSalvos;
     });
   }
@@ -642,33 +1207,50 @@ class _DashboardPageState extends State<DashboardPage> {
     carregar();
   }
 
-  Future<void> editarServico(Servico servico) async {
-    final nome = TextEditingController(text: servico.nome);
-    final valor = TextEditingController(
-      text: servico.valor.toStringAsFixed(2),
+  Future<void> editarServico(
+    Servico servico,
+  ) async {
+    final nome =
+        TextEditingController(
+      text: servico.nome,
     );
 
-    final resultado = await showDialog<bool>(
+    final valor =
+        TextEditingController(
+      text: servico.valor
+          .toStringAsFixed(2),
+    );
+
+    final resultado =
+        await showDialog<bool>(
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: Text('Editar ${servico.nome}'),
+          title: Text(
+            'Editar ${servico.nome}',
+          ),
           content: Column(
-            mainAxisSize: MainAxisSize.min,
+            mainAxisSize:
+                MainAxisSize.min,
             children: [
               TextField(
                 controller: nome,
-                decoration: const InputDecoration(
-                  labelText: 'Nome do serviço',
+                decoration:
+                    const InputDecoration(
+                  labelText:
+                      'Nome do serviço',
                 ),
               ),
               const SizedBox(height: 10),
               TextField(
                 controller: valor,
-                keyboardType: const TextInputType.numberWithOptions(
+                keyboardType:
+                    const TextInputType
+                        .numberWithOptions(
                   decimal: true,
                 ),
-                decoration: const InputDecoration(
+                decoration:
+                    const InputDecoration(
                   labelText: 'Valor',
                   prefixText: 'R\$ ',
                 ),
@@ -677,12 +1259,22 @@ class _DashboardPageState extends State<DashboardPage> {
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancelar'),
+              onPressed: () =>
+                  Navigator.pop(
+                context,
+                false,
+              ),
+              child:
+                  const Text('Cancelar'),
             ),
             FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Salvar'),
+              onPressed: () =>
+                  Navigator.pop(
+                context,
+                true,
+              ),
+              child:
+                  const Text('Salvar'),
             ),
           ],
         );
@@ -695,18 +1287,26 @@ class _DashboardPageState extends State<DashboardPage> {
       return;
     }
 
-    final novoNome = nome.text.trim();
-    final novoValor = valorNumero(valor.text);
+    final novoNome =
+        nome.text.trim();
+
+    final novoValor =
+        valorNumero(valor.text);
 
     nome.dispose();
     valor.dispose();
 
-    if (novoNome.isEmpty || novoValor <= 0) return;
+    if (novoNome.isEmpty ||
+        novoValor <= 0) {
+      return;
+    }
 
     final lista = [...servicos];
 
-    final index = lista.indexWhere(
-      (item) => item.id == servico.id,
+    final index =
+        lista.indexWhere(
+      (item) =>
+          item.id == servico.id,
     );
 
     if (index >= 0) {
@@ -718,35 +1318,50 @@ class _DashboardPageState extends State<DashboardPage> {
       );
     }
 
-    await Storage.salvarServicos(lista);
+    await Storage.salvarServicos(
+      lista,
+    );
+
     await carregar();
   }
 
   Future<void> adicionarServico() async {
-    final nome = TextEditingController();
-    final valor = TextEditingController();
+    final nome =
+        TextEditingController();
 
-    final resultado = await showDialog<bool>(
+    final valor =
+        TextEditingController();
+
+    final resultado =
+        await showDialog<bool>(
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: const Text('Novo serviço'),
+          title:
+              const Text('Novo serviço'),
           content: Column(
-            mainAxisSize: MainAxisSize.min,
+            mainAxisSize:
+                MainAxisSize.min,
             children: [
               TextField(
                 controller: nome,
-                decoration: const InputDecoration(
-                  labelText: 'Nome do serviço',
+                autofocus: true,
+                decoration:
+                    const InputDecoration(
+                  labelText:
+                      'Nome do serviço',
                 ),
               ),
               const SizedBox(height: 10),
               TextField(
                 controller: valor,
-                keyboardType: const TextInputType.numberWithOptions(
+                keyboardType:
+                    const TextInputType
+                        .numberWithOptions(
                   decimal: true,
                 ),
-                decoration: const InputDecoration(
+                decoration:
+                    const InputDecoration(
                   labelText: 'Valor',
                   prefixText: 'R\$ ',
                 ),
@@ -755,12 +1370,22 @@ class _DashboardPageState extends State<DashboardPage> {
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancelar'),
+              onPressed: () =>
+                  Navigator.pop(
+                context,
+                false,
+              ),
+              child:
+                  const Text('Cancelar'),
             ),
             FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Adicionar'),
+              onPressed: () =>
+                  Navigator.pop(
+                context,
+                true,
+              ),
+              child:
+                  const Text('Adicionar'),
             ),
           ],
         );
@@ -773,26 +1398,38 @@ class _DashboardPageState extends State<DashboardPage> {
       return;
     }
 
-    final nomeFinal = nome.text.trim();
-    final valorFinal = valorNumero(valor.text);
+    final nomeFinal =
+        nome.text.trim();
+
+    final valorFinal =
+        valorNumero(valor.text);
 
     nome.dispose();
     valor.dispose();
 
-    if (nomeFinal.isEmpty || valorFinal <= 0) return;
+    if (nomeFinal.isEmpty ||
+        valorFinal <= 0) {
+      return;
+    }
 
     final lista = [...servicos];
 
     lista.add(
       Servico(
-        id: DateTime.now().microsecondsSinceEpoch.toString(),
+        id: DateTime.now()
+            .microsecondsSinceEpoch
+            .toString(),
         nome: nomeFinal,
         valor: valorFinal,
-        icone: Icons.auto_awesome,
+        icone:
+            Icons.auto_awesome,
       ),
     );
 
-    await Storage.salvarServicos(lista);
+    await Storage.salvarServicos(
+      lista,
+    );
+
     await carregar();
   }
 
@@ -803,7 +1440,10 @@ class _DashboardPageState extends State<DashboardPage> {
     return RefreshIndicator(
       onRefresh: carregar,
       child: ListView(
-        padding: const EdgeInsets.all(16),
+        physics:
+            const AlwaysScrollableScrollPhysics(),
+        padding:
+            const EdgeInsets.all(16),
         children: [
           Row(
             children: [
@@ -812,21 +1452,28 @@ class _DashboardPageState extends State<DashboardPage> {
                   'Meu Controle',
                   style: TextStyle(
                     fontSize: 28,
-                    fontWeight: FontWeight.bold,
+                    fontWeight:
+                        FontWeight.bold,
                   ),
                 ),
               ),
               IconButton(
                 onPressed: widget.onData,
-                icon: const Icon(Icons.calendar_month),
-                tooltip: 'Escolher data',
+                icon: const Icon(
+                  Icons.calendar_month,
+                ),
+                tooltip:
+                    'Escolher data',
               ),
             ],
           ),
 
           Text(
-            dataFormatada(dataBanco(widget.data)),
-            style: const TextStyle(
+            dataFormatada(
+              dataBanco(widget.data),
+            ),
+            style:
+                const TextStyle(
               color: Colors.grey,
             ),
           ),
@@ -835,23 +1482,33 @@ class _DashboardPageState extends State<DashboardPage> {
 
           Card(
             child: Padding(
-              padding: const EdgeInsets.all(20),
+              padding:
+                  const EdgeInsets.all(20),
               child: Column(
                 children: [
-                  const Text('Lucro do dia'),
-                  const SizedBox(height: 8),
+                  const Text(
+                    'Lucro do dia',
+                  ),
+                  const SizedBox(
+                    height: 8,
+                  ),
                   Text(
                     moeda(lucro),
                     style: TextStyle(
                       fontSize: 32,
-                      fontWeight: FontWeight.bold,
+                      fontWeight:
+                          FontWeight.bold,
                       color: lucro >= 0
                           ? Colors.green
                           : Colors.red,
                     ),
                   ),
-                  const SizedBox(height: 8),
-                  Text('$atendimentos registros hoje'),
+                  const SizedBox(
+                    height: 8,
+                  ),
+                  Text(
+                    '$atendimentos registros hoje',
+                  ),
                 ],
               ),
             ),
@@ -869,7 +1526,9 @@ class _DashboardPageState extends State<DashboardPage> {
                   Icons.arrow_upward,
                 ),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(
+                width: 10,
+              ),
               Expanded(
                 child: _resumo(
                   'Gastos',
@@ -890,14 +1549,19 @@ class _DashboardPageState extends State<DashboardPage> {
                   'Atendimentos',
                   style: TextStyle(
                     fontSize: 20,
-                    fontWeight: FontWeight.bold,
+                    fontWeight:
+                        FontWeight.bold,
                   ),
                 ),
               ),
               IconButton(
-                onPressed: adicionarServico,
-                icon: const Icon(Icons.add_circle),
-                tooltip: 'Adicionar serviço',
+                onPressed:
+                    adicionarServico,
+                icon: const Icon(
+                  Icons.add_circle,
+                ),
+                tooltip:
+                    'Adicionar serviço',
               ),
             ],
           ),
@@ -908,26 +1572,41 @@ class _DashboardPageState extends State<DashboardPage> {
             (servico) => Card(
               child: ListTile(
                 leading: CircleAvatar(
-                  child: Icon(servico.icone),
+                  child: Icon(
+                    servico.icone,
+                  ),
                 ),
                 title: Text(
                   servico.nome,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
+                  style:
+                      const TextStyle(
+                    fontWeight:
+                        FontWeight.bold,
                   ),
                 ),
                 subtitle: Text(
-                  moeda(servico.valor),
+                  moeda(
+                    servico.valor,
+                  ),
                 ),
                 trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
+                  mainAxisSize:
+                      MainAxisSize.min,
                   children: [
                     IconButton(
-                      onPressed: () => editarServico(servico),
-                      icon: const Icon(Icons.edit),
-                      tooltip: 'Editar valor',
+                      onPressed: () =>
+                          editarServico(
+                        servico,
+                      ),
+                      icon: const Icon(
+                        Icons.edit,
+                      ),
+                      tooltip:
+                          'Editar valor',
                     ),
-                    const Icon(Icons.add_circle),
+                    const Icon(
+                      Icons.add_circle,
+                    ),
                   ],
                 ),
                 onTap: () async {
@@ -935,6 +1614,7 @@ class _DashboardPageState extends State<DashboardPage> {
                     servico.nome,
                     servico.valor,
                   );
+
                   await carregar();
                 },
               ),
@@ -945,11 +1625,17 @@ class _DashboardPageState extends State<DashboardPage> {
 
           OutlinedButton.icon(
             onPressed: () async {
-              await widget.onOutroGanho();
+              await widget
+                  .onOutroGanho();
+
               await carregar();
             },
-            icon: const Icon(Icons.add),
-            label: const Text('Outro ganho'),
+            icon: const Icon(
+              Icons.add,
+            ),
+            label: const Text(
+              'Outro ganho',
+            ),
           ),
 
           const SizedBox(height: 10),
@@ -957,10 +1643,68 @@ class _DashboardPageState extends State<DashboardPage> {
           FilledButton.icon(
             onPressed: () async {
               await widget.onGasto();
+
               await carregar();
             },
-            icon: const Icon(Icons.remove_circle),
-            label: const Text('Adicionar gasto'),
+            icon: const Icon(
+              Icons.remove_circle,
+            ),
+            label: const Text(
+              'Adicionar gasto',
+            ),
+          ),
+
+          const SizedBox(height: 16),
+
+          OutlinedButton.icon(
+            onPressed: () async {
+              final movimentacoes =
+                  await Storage.movimentacoes();
+
+              final estoque =
+                  await Storage.estoque();
+
+              final servicos =
+                  await Storage.servicos();
+
+              final a =
+                  await Storage
+                      .salvarMovimentacoes(
+                movimentacoes,
+              );
+
+              final b =
+                  await Storage
+                      .salvarEstoque(
+                estoque,
+              );
+
+              final c =
+                  await Storage
+                      .salvarServicos(
+                servicos,
+              );
+
+              if (!mounted) return;
+
+              ScaffoldMessenger.of(
+                context,
+              ).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    a && b && c
+                        ? 'Tudo salvo com sucesso.'
+                        : 'Houve um problema ao salvar.',
+                  ),
+                ),
+              );
+            },
+            icon: const Icon(
+              Icons.save_outlined,
+            ),
+            label: const Text(
+              'Salvar agora',
+            ),
           ),
         ],
       ),
@@ -975,16 +1719,22 @@ class _DashboardPageState extends State<DashboardPage> {
   ) {
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding:
+            const EdgeInsets.all(16),
         child: Column(
           children: [
-            Icon(icone, color: cor),
+            Icon(
+              icone,
+              color: cor,
+            ),
             const SizedBox(height: 5),
             Text(titulo),
             Text(
               moeda(valor),
-              style: const TextStyle(
-                fontWeight: FontWeight.bold,
+              style:
+                  const TextStyle(
+                fontWeight:
+                    FontWeight.bold,
               ),
             ),
           ],
@@ -1002,11 +1752,14 @@ class EstoquePage extends StatefulWidget {
   const EstoquePage({super.key});
 
   @override
-  State<EstoquePage> createState() => _EstoquePageState();
+  State<EstoquePage> createState() =>
+      _EstoquePageState();
 }
 
-class _EstoquePageState extends State<EstoquePage> {
+class _EstoquePageState
+    extends State<EstoquePage> {
   List<Produto> produtos = [];
+
   String busca = '';
 
   @override
@@ -1016,7 +1769,8 @@ class _EstoquePageState extends State<EstoquePage> {
   }
 
   Future<void> carregar() async {
-    final lista = await Storage.estoque();
+    final lista =
+        await Storage.estoque();
 
     if (!mounted) return;
 
@@ -1025,28 +1779,50 @@ class _EstoquePageState extends State<EstoquePage> {
     });
   }
 
-  Future<void> editarProduto([Produto? produto]) async {
-    final nome = TextEditingController(
+  Future<void> editarProduto(
+    [Produto? produto],
+  ) async {
+    final nome =
+        TextEditingController(
       text: produto?.nome ?? '',
     );
 
-    final quantidade = TextEditingController(
-      text: produto?.quantidade.toString() ?? '0',
+    final quantidade =
+        TextEditingController(
+      text:
+          produto?.quantidade
+              .toString() ??
+          '0',
     );
 
-    final minimo = TextEditingController(
-      text: produto?.estoqueMinimo.toString() ?? '0',
+    final minimo =
+        TextEditingController(
+      text:
+          produto?.estoqueMinimo
+              .toString() ??
+          '0',
     );
 
-    final compra = TextEditingController(
-      text: produto?.precoCompra.toStringAsFixed(2) ?? '',
+    final compra =
+        TextEditingController(
+      text: produto
+              ?.precoCompra
+              .toStringAsFixed(
+                  2) ??
+          '',
     );
 
-    final venda = TextEditingController(
-      text: produto?.precoVenda.toStringAsFixed(2) ?? '',
+    final venda =
+        TextEditingController(
+      text: produto
+              ?.precoVenda
+              .toStringAsFixed(
+                  2) ??
+          '',
     );
 
-    final resultado = await showDialog<bool>(
+    final resultado =
+        await showDialog<bool>(
       context: context,
       builder: (context) {
         return AlertDialog(
@@ -1055,52 +1831,84 @@ class _EstoquePageState extends State<EstoquePage> {
                 ? 'Adicionar produto'
                 : 'Editar produto',
           ),
-          content: SingleChildScrollView(
+          content:
+              SingleChildScrollView(
             child: Column(
-              mainAxisSize: MainAxisSize.min,
+              mainAxisSize:
+                  MainAxisSize.min,
               children: [
                 TextField(
                   controller: nome,
-                  decoration: const InputDecoration(
-                    labelText: 'Nome do produto',
+                  autofocus: true,
+                  decoration:
+                      const InputDecoration(
+                    labelText:
+                        'Nome do produto',
                   ),
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(
+                  height: 10,
+                ),
                 TextField(
-                  controller: quantidade,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: 'Quantidade',
+                  controller:
+                      quantidade,
+                  keyboardType:
+                      TextInputType
+                          .number,
+                  decoration:
+                      const InputDecoration(
+                    labelText:
+                        'Quantidade',
                   ),
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(
+                  height: 10,
+                ),
                 TextField(
                   controller: minimo,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: 'Estoque mínimo',
+                  keyboardType:
+                      TextInputType
+                          .number,
+                  decoration:
+                      const InputDecoration(
+                    labelText:
+                        'Estoque mínimo',
                   ),
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(
+                  height: 10,
+                ),
                 TextField(
                   controller: compra,
-                  keyboardType: const TextInputType.numberWithOptions(
+                  keyboardType:
+                      const TextInputType
+                          .numberWithOptions(
                     decimal: true,
                   ),
-                  decoration: const InputDecoration(
-                    labelText: 'Preço de compra',
-                    prefixText: 'R\$ ',
+                  decoration:
+                      const InputDecoration(
+                    labelText:
+                        'Preço de compra',
+                    prefixText:
+                        'R\$ ',
                   ),
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(
+                  height: 10,
+                ),
                 TextField(
                   controller: venda,
-                  keyboardType: const TextInputType.numberWithOptions(
+                  keyboardType:
+                      const TextInputType
+                          .numberWithOptions(
                     decimal: true,
                   ),
-                  decoration: const InputDecoration(
-                    labelText: 'Preço de venda',
-                    prefixText: 'R\$ ',
+                  decoration:
+                      const InputDecoration(
+                    labelText:
+                        'Preço de venda',
+                    prefixText:
+                        'R\$ ',
                   ),
                 ),
               ],
@@ -1108,12 +1916,22 @@ class _EstoquePageState extends State<EstoquePage> {
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancelar'),
+              onPressed: () =>
+                  Navigator.pop(
+                context,
+                false,
+              ),
+              child:
+                  const Text('Cancelar'),
             ),
             FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Salvar'),
+              onPressed: () =>
+                  Navigator.pop(
+                context,
+                true,
+              ),
+              child:
+                  const Text('Salvar'),
             ),
           ],
         );
@@ -1129,19 +1947,31 @@ class _EstoquePageState extends State<EstoquePage> {
       return;
     }
 
-    final nomeFinal = nome.text.trim();
-    final quantidadeFinal = int.tryParse(
-          quantidade.text.trim(),
-        ) ??
-        0;
+    final nomeFinal =
+        nome.text.trim();
 
-    final minimoFinal = int.tryParse(
-          minimo.text.trim(),
-        ) ??
-        0;
+    final quantidadeFinal =
+        int.tryParse(
+              quantidade.text
+                  .trim(),
+            ) ??
+            0;
 
-    final compraFinal = valorNumero(compra.text);
-    final vendaFinal = valorNumero(venda.text);
+    final minimoFinal =
+        int.tryParse(
+              minimo.text.trim(),
+            ) ??
+            0;
+
+    final compraFinal =
+        valorNumero(
+      compra.text,
+    );
+
+    final vendaFinal =
+        valorNumero(
+      venda.text,
+    );
 
     nome.dispose();
     quantidade.dispose();
@@ -1155,19 +1985,36 @@ class _EstoquePageState extends State<EstoquePage> {
 
     final novo = Produto(
       id: produto?.id ??
-          DateTime.now().microsecondsSinceEpoch.toString(),
+          DateTime.now()
+              .microsecondsSinceEpoch
+              .toString(),
       nome: nomeFinal,
-      quantidade: quantidadeFinal,
-      estoqueMinimo: minimoFinal,
-      precoCompra: compraFinal,
-      precoVenda: vendaFinal,
+      quantidade:
+          quantidadeFinal < 0
+              ? 0
+              : quantidadeFinal,
+      estoqueMinimo:
+          minimoFinal < 0
+              ? 0
+              : minimoFinal,
+      precoCompra:
+          compraFinal < 0
+              ? 0
+              : compraFinal,
+      precoVenda:
+          vendaFinal < 0
+              ? 0
+              : vendaFinal,
     );
 
     if (produto == null) {
       lista.add(novo);
     } else {
-      final index = lista.indexWhere(
-        (item) => item.id == produto.id,
+      final index =
+          lista.indexWhere(
+        (item) =>
+            item.id ==
+            produto.id,
       );
 
       if (index >= 0) {
@@ -1175,27 +2022,45 @@ class _EstoquePageState extends State<EstoquePage> {
       }
     }
 
-    await Storage.salvarEstoque(lista);
+    await Storage.salvarEstoque(
+      lista,
+    );
+
     await carregar();
   }
 
-  Future<void> excluirProduto(Produto produto) async {
-    final confirmar = await showDialog<bool>(
+  Future<void> excluirProduto(
+    Produto produto,
+  ) async {
+    final confirmar =
+        await showDialog<bool>(
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: const Text('Excluir produto?'),
+          title: const Text(
+            'Excluir produto?',
+          ),
           content: Text(
             'Deseja excluir "${produto.nome}"?',
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancelar'),
+              onPressed: () =>
+                  Navigator.pop(
+                context,
+                false,
+              ),
+              child:
+                  const Text('Cancelar'),
             ),
             FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Excluir'),
+              onPressed: () =>
+                  Navigator.pop(
+                context,
+                true,
+              ),
+              child:
+                  const Text('Excluir'),
             ),
           ],
         );
@@ -1205,144 +2070,214 @@ class _EstoquePageState extends State<EstoquePage> {
     if (confirmar != true) return;
 
     produtos.removeWhere(
-      (item) => item.id == produto.id,
+      (item) =>
+          item.id == produto.id,
     );
 
-    await Storage.salvarEstoque(produtos);
+    await Storage.salvarEstoque(
+      produtos,
+    );
+
     await carregar();
   }
 
   @override
   Widget build(BuildContext context) {
-    final lista = produtos.where((produto) {
-      if (busca.trim().isEmpty) return true;
+    final lista =
+        produtos.where((produto) {
+      if (busca.trim().isEmpty) {
+        return true;
+      }
 
-      return produto.nome.toLowerCase().contains(
+      return produto.nome
+          .toLowerCase()
+          .contains(
             busca.toLowerCase(),
           );
     }).toList();
 
-    final valorTotal = produtos.fold<double>(
+    final valorTotal =
+        produtos.fold<double>(
       0,
-      (total, produto) => total + produto.valorEstoque,
+      (total, produto) =>
+          total + produto.valorEstoque,
     );
 
     return Scaffold(
-      backgroundColor: Colors.transparent,
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => editarProduto(),
-        icon: const Icon(Icons.add),
-        label: const Text('Produto'),
+      backgroundColor:
+          Colors.transparent,
+      floatingActionButton:
+          FloatingActionButton.extended(
+        onPressed:
+            () => editarProduto(),
+        icon: const Icon(
+          Icons.add,
+        ),
+        label: const Text(
+          'Produto',
+        ),
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          const Text(
-            'Estoque',
-            style: TextStyle(
-              fontSize: 28,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-
-          const SizedBox(height: 6),
-
-          Text(
-            '${produtos.length} produtos • ${moeda(valorTotal)}',
-            style: const TextStyle(
-              color: Colors.grey,
-            ),
-          ),
-
-          const SizedBox(height: 16),
-
-          TextField(
-            onChanged: (texto) {
-              setState(() {
-                busca = texto;
-              });
-            },
-            decoration: InputDecoration(
-              hintText: 'Buscar produto...',
-              prefixIcon: const Icon(Icons.search),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
-              ),
-            ),
-          ),
-
-          const SizedBox(height: 16),
-
-          if (lista.isEmpty)
-            const Card(
-              child: Padding(
-                padding: EdgeInsets.all(24),
-                child: Center(
-                  child: Text(
-                    'Nenhum produto cadastrado.',
-                  ),
-                ),
+      body: RefreshIndicator(
+        onRefresh: carregar,
+        child: ListView(
+          physics:
+              const AlwaysScrollableScrollPhysics(),
+          padding:
+              const EdgeInsets.all(16),
+          children: [
+            const Text(
+              'Estoque',
+              style: TextStyle(
+                fontSize: 28,
+                fontWeight:
+                    FontWeight.bold,
               ),
             ),
 
-          ...lista.map(
-            (produto) => Card(
-              child: ListTile(
-                leading: CircleAvatar(
-                  child: Text(
-                    produto.quantidade.toString(),
-                  ),
-                ),
-                title: Text(
-                  produto.nome,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                subtitle: Text(
-                  'Quantidade: ${produto.quantidade}\n'
-                  'Compra: ${moeda(produto.precoCompra)}\n'
-                  'Venda: ${moeda(produto.precoVenda)}\n'
-                  'Lucro/un.: ${moeda(produto.lucroUnitario)}',
-                ),
-                isThreeLine: true,
-                trailing: PopupMenuButton<String>(
-                  onSelected: (opcao) {
-                    if (opcao == 'editar') {
-                      editarProduto(produto);
-                    }
+            const SizedBox(height: 6),
 
-                    if (opcao == 'excluir') {
-                      excluirProduto(produto);
-                    }
-                  },
-                  itemBuilder: (context) => const [
-                    PopupMenuItem(
-                      value: 'editar',
-                      child: Row(
-                        children: [
-                          Icon(Icons.edit),
-                          SizedBox(width: 10),
-                          Text('Editar'),
-                        ],
-                      ),
+            Text(
+              '${produtos.length} produtos • ${moeda(valorTotal)}',
+              style:
+                  const TextStyle(
+                color: Colors.grey,
+              ),
+            ),
+
+            const SizedBox(height: 16),
+
+            TextField(
+              onChanged: (texto) {
+                setState(() {
+                  busca = texto;
+                });
+              },
+              decoration:
+                  InputDecoration(
+                hintText:
+                    'Buscar produto...',
+                prefixIcon:
+                    const Icon(
+                  Icons.search,
+                ),
+                border:
+                    OutlineInputBorder(
+                  borderRadius:
+                      BorderRadius
+                          .circular(
+                    14,
+                  ),
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 16),
+
+            if (lista.isEmpty)
+              const Card(
+                child: Padding(
+                  padding:
+                      EdgeInsets.all(
+                    24,
+                  ),
+                  child: Center(
+                    child: Text(
+                      'Nenhum produto cadastrado.',
                     ),
-                    PopupMenuItem(
-                      value: 'excluir',
-                      child: Row(
-                        children: [
-                          Icon(Icons.delete),
-                          SizedBox(width: 10),
-                          Text('Excluir'),
-                        ],
-                      ),
+                  ),
+                ),
+              ),
+
+            ...lista.map(
+              (produto) => Card(
+                child: ListTile(
+                  leading:
+                      CircleAvatar(
+                    child: Text(
+                      produto
+                          .quantidade
+                          .toString(),
                     ),
-                  ],
+                  ),
+                  title: Text(
+                    produto.nome,
+                    style:
+                        const TextStyle(
+                      fontWeight:
+                          FontWeight
+                              .bold,
+                    ),
+                  ),
+                  subtitle: Text(
+                    'Quantidade: ${produto.quantidade}\n'
+                    'Compra: ${moeda(produto.precoCompra)}\n'
+                    'Venda: ${moeda(produto.precoVenda)}\n'
+                    'Lucro/un.: ${moeda(produto.lucroUnitario)}',
+                  ),
+                  isThreeLine: true,
+                  trailing:
+                      PopupMenuButton<
+                          String>(
+                    onSelected:
+                        (opcao) {
+                      if (opcao ==
+                          'editar') {
+                        editarProduto(
+                          produto,
+                        );
+                      }
+
+                      if (opcao ==
+                          'excluir') {
+                        excluirProduto(
+                          produto,
+                        );
+                      }
+                    },
+                    itemBuilder:
+                        (context) =>
+                            const [
+                      PopupMenuItem(
+                        value:
+                            'editar',
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.edit,
+                            ),
+                            SizedBox(
+                              width: 10,
+                            ),
+                            Text(
+                              'Editar',
+                            ),
+                          ],
+                        ),
+                      ),
+                      PopupMenuItem(
+                        value:
+                            'excluir',
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.delete,
+                            ),
+                            SizedBox(
+                              width: 10,
+                            ),
+                            Text(
+                              'Excluir',
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -1356,10 +2291,12 @@ class HistoricoPage extends StatefulWidget {
   const HistoricoPage({super.key});
 
   @override
-  State<HistoricoPage> createState() => _HistoricoPageState();
+  State<HistoricoPage> createState() =>
+      _HistoricoPageState();
 }
 
-class _HistoricoPageState extends State<HistoricoPage> {
+class _HistoricoPageState
+    extends State<HistoricoPage> {
   List<Movimentacao> lista = [];
 
   @override
@@ -1369,32 +2306,49 @@ class _HistoricoPageState extends State<HistoricoPage> {
   }
 
   Future<void> carregar() async {
-    final dados = await Storage.movimentacoes();
+    final dados =
+        await Storage.movimentacoes();
 
     if (!mounted) return;
 
     setState(() {
-      lista = dados.reversed.toList();
+      lista =
+          dados.reversed.toList();
     });
   }
 
-  Future<void> excluir(Movimentacao item) async {
-    final confirmar = await showDialog<bool>(
+  Future<void> excluir(
+    Movimentacao item,
+  ) async {
+    final confirmar =
+        await showDialog<bool>(
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: const Text('Excluir registro?'),
+          title: const Text(
+            'Excluir registro?',
+          ),
           content: Text(
             'Deseja excluir "${item.categoria}"?',
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancelar'),
+              onPressed: () =>
+                  Navigator.pop(
+                context,
+                false,
+              ),
+              child:
+                  const Text('Cancelar'),
             ),
             FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Excluir'),
+              onPressed: () =>
+                  Navigator.pop(
+                context,
+                true,
+              ),
+              child:
+                  const Text('Excluir'),
             ),
           ],
         );
@@ -1403,13 +2357,19 @@ class _HistoricoPageState extends State<HistoricoPage> {
 
     if (confirmar != true) return;
 
-    final todos = await Storage.movimentacoes();
+    final todos =
+        await Storage.movimentacoes();
 
     todos.removeWhere(
-      (movimentacao) => movimentacao.id == item.id,
+      (movimentacao) =>
+          movimentacao.id ==
+          item.id,
     );
 
-    await Storage.salvarMovimentacoes(todos);
+    await Storage.salvarMovimentacoes(
+      todos,
+    );
+
     await carregar();
   }
 
@@ -1418,13 +2378,17 @@ class _HistoricoPageState extends State<HistoricoPage> {
     return RefreshIndicator(
       onRefresh: carregar,
       child: ListView(
-        padding: const EdgeInsets.all(16),
+        physics:
+            const AlwaysScrollableScrollPhysics(),
+        padding:
+            const EdgeInsets.all(16),
         children: [
           const Text(
             'Histórico',
             style: TextStyle(
               fontSize: 28,
-              fontWeight: FontWeight.bold,
+              fontWeight:
+                  FontWeight.bold,
             ),
           ),
 
@@ -1433,7 +2397,8 @@ class _HistoricoPageState extends State<HistoricoPage> {
           if (lista.isEmpty)
             const Card(
               child: Padding(
-                padding: EdgeInsets.all(24),
+                padding:
+                    EdgeInsets.all(24),
                 child: Center(
                   child: Text(
                     'Nenhum registro encontrado.',
@@ -1445,38 +2410,60 @@ class _HistoricoPageState extends State<HistoricoPage> {
           ...lista.map(
             (item) => Card(
               child: ListTile(
-                leading: CircleAvatar(
+                leading:
+                    CircleAvatar(
                   child: Icon(
-                    item.tipo == 'ganho'
-                        ? Icons.arrow_upward
-                        : Icons.arrow_downward,
+                    item.tipo ==
+                            'ganho'
+                        ? Icons
+                            .arrow_upward
+                        : Icons
+                            .arrow_downward,
                   ),
                 ),
                 title: Text(
                   item.categoria,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
+                  style:
+                      const TextStyle(
+                    fontWeight:
+                        FontWeight
+                            .bold,
                   ),
                 ),
                 subtitle: Text(
-                  dataFormatada(item.data),
+                  dataFormatada(
+                    item.data,
+                  ),
                 ),
                 trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
+                  mainAxisSize:
+                      MainAxisSize.min,
                   children: [
                     Text(
                       '${item.tipo == 'ganho' ? '+' : '-'} '
                       '${moeda(item.valor)}',
                       style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: item.tipo == 'ganho'
+                        fontWeight:
+                            FontWeight
+                                .bold,
+                        color: item.tipo ==
+                                'ganho'
                             ? Colors.green
                             : Colors.red,
                       ),
                     ),
                     IconButton(
-                      onPressed: () => excluir(item),
-                      icon: const Icon(Icons.delete_outline),
+                      onPressed:
+                          () => excluir(
+                        item,
+                      ),
+                      icon:
+                          const Icon(
+                        Icons
+                            .delete_outline,
+                      ),
+                      tooltip:
+                          'Excluir',
                     ),
                   ],
                 ),
