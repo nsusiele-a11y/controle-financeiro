@@ -178,26 +178,28 @@ class Storage {
   static Future<List<Movimentacao>> movimentacoes() async {
     try {
       final prefs = await _getPrefs();
-
       final lista = prefs.getStringList(movimentacoesKey);
 
       if (lista == null) return [];
 
-      return lista.map((item) {
-        final decoded = jsonDecode(item);
+      final resultado = <Movimentacao>[];
 
-        if (decoded is Map<String, dynamic>) {
-          return Movimentacao.fromMap(decoded);
-        }
+      for (final item in lista) {
+        try {
+          final decoded = jsonDecode(item);
 
-        return Movimentacao(
-          id: '',
-          tipo: 'gasto',
-          categoria: '',
-          valor: 0,
-          data: '',
-        );
-      }).where((item) => item.id.isNotEmpty).toList();
+          if (decoded is Map<String, dynamic>) {
+            final movimentacao =
+                Movimentacao.fromMap(decoded);
+
+            if (movimentacao.id.isNotEmpty) {
+              resultado.add(movimentacao);
+            }
+          }
+        } catch (_) {}
+      }
+
+      return resultado;
     } catch (_) {
       return [];
     }
@@ -221,27 +223,27 @@ class Storage {
   static Future<List<Produto>> estoque() async {
     try {
       final prefs = await _getPrefs();
-
       final lista = prefs.getStringList(estoqueKey);
 
       if (lista == null) return [];
 
-      return lista.map((item) {
-        final decoded = jsonDecode(item);
+      final resultado = <Produto>[];
 
-        if (decoded is Map<String, dynamic>) {
-          return Produto.fromMap(decoded);
-        }
+      for (final item in lista) {
+        try {
+          final decoded = jsonDecode(item);
 
-        return Produto(
-          id: '',
-          nome: '',
-          quantidade: 0,
-          estoqueMinimo: 0,
-          precoCompra: 0,
-          precoVenda: 0,
-        );
-      }).where((item) => item.id.isNotEmpty).toList();
+          if (decoded is Map<String, dynamic>) {
+            final produto = Produto.fromMap(decoded);
+
+            if (produto.id.isNotEmpty) {
+              resultado.add(produto);
+            }
+          }
+        } catch (_) {}
+      }
+
+      return resultado;
     } catch (_) {
       return [];
     }
@@ -294,7 +296,6 @@ class Storage {
   static Future<List<Servico>> servicos() async {
     try {
       final prefs = await _getPrefs();
-
       final dados = prefs.getStringList(servicosKey);
 
       if (dados == null) {
@@ -304,36 +305,42 @@ class Storage {
       final lista = <Servico>[];
 
       for (final item in dados) {
-        final mapa = jsonDecode(item) as Map<String, dynamic>;
+        try {
+          final mapa = jsonDecode(item);
 
-        IconData icone = Icons.auto_awesome;
+          if (mapa is! Map<String, dynamic>) {
+            continue;
+          }
 
-        switch (mapa['id']) {
-          case 'cilios':
-            icone = Icons.remove_red_eye;
-            break;
-          case 'fox':
-            icone = Icons.auto_awesome;
-            break;
-          case 'sobrancelha':
-            icone = Icons.face;
-            break;
-          case 'manutencao':
-            icone = Icons.build;
-            break;
-        }
+          IconData icone = Icons.auto_awesome;
 
-        lista.add(
-          Servico(
-            id: mapa['id']?.toString() ?? '',
-            nome: mapa['nome']?.toString() ?? '',
-            valor: (mapa['valor'] as num?)?.toDouble() ?? 0,
-            icone: icone,
-          ),
-        );
+          switch (mapa['id']) {
+            case 'cilios':
+              icone = Icons.remove_red_eye;
+              break;
+            case 'fox':
+              icone = Icons.auto_awesome;
+              break;
+            case 'sobrancelha':
+              icone = Icons.face;
+              break;
+            case 'manutencao':
+              icone = Icons.build;
+              break;
+          }
+
+          lista.add(
+            Servico(
+              id: mapa['id']?.toString() ?? '',
+              nome: mapa['nome']?.toString() ?? '',
+              valor: (mapa['valor'] as num?)?.toDouble() ?? 0,
+              icone: icone,
+            ),
+          );
+        } catch (_) {}
       }
 
-      return lista;
+      return lista.isEmpty ? servicosPadrao() : lista;
     } catch (_) {
       return servicosPadrao();
     }
@@ -402,9 +409,7 @@ class Storage {
       }
 
       final movimentacoesDados = decoded['movimentacoes'];
-
       final estoqueDados = decoded['estoque'];
-
       final servicosDados = decoded['servicos'];
 
       if (movimentacoesDados is! List ||
@@ -436,33 +441,35 @@ class Storage {
       final novosServicos = <Servico>[];
 
       for (final item in servicosDados) {
-        if (item is Map<String, dynamic>) {
-          IconData icone = Icons.auto_awesome;
-
-          switch (item['id']) {
-            case 'cilios':
-              icone = Icons.remove_red_eye;
-              break;
-            case 'fox':
-              icone = Icons.auto_awesome;
-              break;
-            case 'sobrancelha':
-              icone = Icons.face;
-              break;
-            case 'manutencao':
-              icone = Icons.build;
-              break;
-          }
-
-          novosServicos.add(
-            Servico(
-              id: item['id']?.toString() ?? '',
-              nome: item['nome']?.toString() ?? '',
-              valor: (item['valor'] as num?)?.toDouble() ?? 0,
-              icone: icone,
-            ),
-          );
+        if (item is! Map<String, dynamic>) {
+          continue;
         }
+
+        IconData icone = Icons.auto_awesome;
+
+        switch (item['id']) {
+          case 'cilios':
+            icone = Icons.remove_red_eye;
+            break;
+          case 'fox':
+            icone = Icons.auto_awesome;
+            break;
+          case 'sobrancelha':
+            icone = Icons.face;
+            break;
+          case 'manutencao':
+            icone = Icons.build;
+            break;
+        }
+
+        novosServicos.add(
+          Servico(
+            id: item['id']?.toString() ?? '',
+            nome: item['nome']?.toString() ?? '',
+            valor: (item['valor'] as num?)?.toDouble() ?? 0,
+            icone: icone,
+          ),
+        );
       }
 
       final salvouMovimentacoes =
@@ -477,20 +484,6 @@ class Storage {
       return salvouMovimentacoes &&
           salvouEstoque &&
           salvouServicos;
-    } catch (_) {
-      return false;
-    }
-  }
-
-  static Future<bool> limparTodosOsDados() async {
-    try {
-      final prefs = await _getPrefs();
-
-      final a = await prefs.remove(movimentacoesKey);
-      final b = await prefs.remove(estoqueKey);
-      final c = await prefs.remove(servicosKey);
-
-      return a || b || c;
     } catch (_) {
       return false;
     }
@@ -514,7 +507,8 @@ class MeuControleApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(
           seedColor: Colors.green,
         ),
-        scaffoldBackgroundColor: const Color(0xFFF5F7F6),
+        scaffoldBackgroundColor:
+            const Color(0xFFF5F7F6),
       ),
       home: const HomePage(),
     );
@@ -537,7 +531,9 @@ class _HomePageState extends State<HomePage> {
 
   DateTime dataSelecionada = DateTime.now();
 
-  Future<void> mostrarMensagem(String mensagem) async {
+  Future<void> mostrarMensagem(
+    String mensagem,
+  ) async {
     if (!mounted) return;
 
     ScaffoldMessenger.of(context)
@@ -558,7 +554,9 @@ class _HomePageState extends State<HomePage> {
 
     lista.add(
       Movimentacao(
-        id: DateTime.now().microsecondsSinceEpoch.toString(),
+        id: DateTime.now()
+            .microsecondsSinceEpoch
+            .toString(),
         tipo: 'ganho',
         categoria: categoria,
         valor: valor,
@@ -587,7 +585,7 @@ class _HomePageState extends State<HomePage> {
 
     final resultado = await showDialog<bool>(
       context: context,
-      builder: (context) {
+      builder: (dialogContext) {
         return AlertDialog(
           title: const Text('Adicionar gasto'),
           content: Column(
@@ -598,7 +596,8 @@ class _HomePageState extends State<HomePage> {
                 autofocus: true,
                 decoration: const InputDecoration(
                   labelText: 'Descrição',
-                  prefixIcon: Icon(Icons.description),
+                  prefixIcon:
+                      Icon(Icons.description),
                 ),
               ),
               const SizedBox(height: 10),
@@ -608,7 +607,8 @@ class _HomePageState extends State<HomePage> {
                     const TextInputType.numberWithOptions(
                   decimal: true,
                 ),
-                decoration: const InputDecoration(
+                decoration:
+                    const InputDecoration(
                   labelText: 'Valor',
                   prefixText: 'R\$ ',
                 ),
@@ -618,7 +618,7 @@ class _HomePageState extends State<HomePage> {
           actions: [
             TextButton(
               onPressed: () =>
-                  Navigator.pop(context, false),
+                  Navigator.pop(dialogContext, false),
               child: const Text('Cancelar'),
             ),
             FilledButton(
@@ -643,8 +643,9 @@ class _HomePageState extends State<HomePage> {
                     categoria:
                         categoria.text.trim(),
                     valor: valorFinal,
-                    data:
-                        dataBanco(dataSelecionada),
+                    data: dataBanco(
+                      dataSelecionada,
+                    ),
                   ),
                 );
 
@@ -655,8 +656,11 @@ class _HomePageState extends State<HomePage> {
 
                 if (!salvou) return;
 
-                if (context.mounted) {
-                  Navigator.pop(context, true);
+                if (dialogContext.mounted) {
+                  Navigator.pop(
+                    dialogContext,
+                    true,
+                  );
                 }
               },
               child: const Text('Salvar'),
@@ -683,7 +687,7 @@ class _HomePageState extends State<HomePage> {
 
     final resultado = await showDialog<double>(
       context: context,
-      builder: (context) {
+      builder: (dialogContext) {
         return AlertDialog(
           title: const Text('Outro ganho'),
           content: Column(
@@ -702,7 +706,8 @@ class _HomePageState extends State<HomePage> {
                     const TextInputType.numberWithOptions(
                   decimal: true,
                 ),
-                decoration: const InputDecoration(
+                decoration:
+                    const InputDecoration(
                   labelText: 'Valor',
                   prefixText: 'R\$ ',
                 ),
@@ -712,7 +717,7 @@ class _HomePageState extends State<HomePage> {
           actions: [
             TextButton(
               onPressed: () =>
-                  Navigator.pop(context),
+                  Navigator.pop(dialogContext),
               child: const Text('Cancelar'),
             ),
             FilledButton(
@@ -722,7 +727,7 @@ class _HomePageState extends State<HomePage> {
 
                 if (valorFinal > 0) {
                   Navigator.pop(
-                    context,
+                    dialogContext,
                     valorFinal,
                   );
                 }
@@ -763,48 +768,93 @@ class _HomePageState extends State<HomePage> {
   }
 
   // ==========================================================
-  // TELA DE BACKUP
+  // SALVAR AGORA
   // ==========================================================
 
-  Future<void> abrirBackup() async {
-    final backupController =
-        TextEditingController();
+  Future<void> salvarAgora() async {
+    final movimentacoes =
+        await Storage.movimentacoes();
 
-    final backup = await Storage.criarBackup();
+    final estoque =
+        await Storage.estoque();
+
+    final servicos =
+        await Storage.servicos();
+
+    final a =
+        await Storage.salvarMovimentacoes(
+      movimentacoes,
+    );
+
+    final b =
+        await Storage.salvarEstoque(
+      estoque,
+    );
+
+    final c =
+        await Storage.salvarServicos(
+      servicos,
+    );
 
     if (!mounted) return;
 
-    backupController.text = backup;
+    await mostrarMensagem(
+      a && b && c
+          ? 'Dados salvos com sucesso.'
+          : 'Não foi possível salvar todos os dados.',
+    );
+  }
 
-    await showDialog(
+  // ==========================================================
+  // EXPORTAR BACKUP
+  // ==========================================================
+
+  Future<void> exportarBackup() async {
+    final backup =
+        await Storage.criarBackup();
+
+    if (!mounted) return;
+
+    final controller =
+        TextEditingController(
+      text: backup,
+    );
+
+    await showDialog<void>(
       context: context,
-      builder: (context) {
+      builder: (dialogContext) {
         return AlertDialog(
-          title: const Text('Backup dos dados'),
+          title:
+              const Text('Exportar backup'),
           content: SizedBox(
             width: 600,
             child: SingleChildScrollView(
               child: Column(
-                mainAxisSize: MainAxisSize.min,
+                mainAxisSize:
+                    MainAxisSize.min,
                 children: [
                   const Align(
-                    alignment: Alignment.centerLeft,
+                    alignment:
+                        Alignment.centerLeft,
                     child: Text(
-                      'Exporte seu backup copiando o código abaixo. '
-                      'Guarde esse conteúdo em um local seguro.',
+                      'Copie o código abaixo e guarde em um local seguro.',
                     ),
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(
+                    height: 12,
+                  ),
                   TextField(
-                    controller: backupController,
+                    controller: controller,
                     readOnly: true,
                     maxLines: 12,
-                    style: const TextStyle(
+                    style:
+                        const TextStyle(
                       fontSize: 11,
                     ),
-                    decoration: const InputDecoration(
-                      border: OutlineInputBorder(),
-                      hintText: 'Backup',
+                    decoration:
+                        const InputDecoration(
+                      border:
+                          OutlineInputBorder(),
                     ),
                   ),
                 ],
@@ -814,66 +864,88 @@ class _HomePageState extends State<HomePage> {
           actions: [
             TextButton(
               onPressed: () =>
-                  Navigator.pop(context),
-              child: const Text('Fechar'),
+                  Navigator.pop(
+                dialogContext,
+              ),
+              child:
+                  const Text('Fechar'),
             ),
             FilledButton.icon(
               onPressed: () async {
                 await Clipboard.setData(
                   ClipboardData(
-                    text: backupController.text,
+                    text: controller.text,
                   ),
                 );
 
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context)
-                    .showSnackBar(
+                if (!dialogContext.mounted) {
+                  return;
+                }
+
+                ScaffoldMessenger.of(
+                  dialogContext,
+                ).showSnackBar(
                   const SnackBar(
                     content: Text(
-                      'Backup copiado. Guarde o código em um local seguro.',
+                      'Backup copiado.',
                     ),
                   ),
                 );
-                }
               },
-              icon: const Icon(Icons.copy),
-              label: const Text('Copiar backup'),
+              icon:
+                  const Icon(Icons.copy),
+              label:
+                  const Text('Copiar'),
             ),
           ],
         );
       },
     );
 
-    backupController.dispose();
+    controller.dispose();
   }
 
-  Future<void> restaurarBackup() async {
-    final controller = TextEditingController();
+  // ==========================================================
+  // RESTAURAR BACKUP
+  // ==========================================================
 
-    final resultado = await showDialog<bool>(
+  Future<void> restaurarBackup() async {
+    final controller =
+        TextEditingController();
+
+    final resultado =
+        await showDialog<bool>(
       context: context,
-      builder: (context) {
+      builder: (dialogContext) {
         return AlertDialog(
-          title: const Text('Restaurar backup'),
+          title:
+              const Text('Restaurar backup'),
           content: SizedBox(
             width: 600,
             child: SingleChildScrollView(
               child: Column(
-                mainAxisSize: MainAxisSize.min,
+                mainAxisSize:
+                    MainAxisSize.min,
                 children: [
                   const Align(
-                    alignment: Alignment.centerLeft,
+                    alignment:
+                        Alignment.centerLeft,
                     child: Text(
-                      'Cole aqui o código do backup que você salvou anteriormente.',
+                      'Cole abaixo o código do backup.',
                     ),
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(
+                    height: 12,
+                  ),
                   TextField(
                     controller: controller,
                     maxLines: 12,
-                    decoration: const InputDecoration(
-                      border: OutlineInputBorder(),
-                      hintText: 'Cole o backup aqui',
+                    decoration:
+                        const InputDecoration(
+                      border:
+                          OutlineInputBorder(),
+                      hintText:
+                          'Cole o backup aqui',
                     ),
                   ),
                 ],
@@ -883,37 +955,53 @@ class _HomePageState extends State<HomePage> {
           actions: [
             TextButton(
               onPressed: () =>
-                  Navigator.pop(context, false),
-              child: const Text('Cancelar'),
+                  Navigator.pop(
+                dialogContext,
+                false,
+              ),
+              child:
+                  const Text('Cancelar'),
             ),
             FilledButton.icon(
               onPressed: () async {
-                if (controller.text.trim().isEmpty) {
+                if (controller.text
+                    .trim()
+                    .isEmpty) {
                   return;
                 }
 
                 final sucesso =
-                    await Storage.restaurarBackup(
+                    await Storage
+                        .restaurarBackup(
                   controller.text.trim(),
                 );
 
-                if (!context.mounted) return;
+                if (!dialogContext.mounted) {
+                  return;
+                }
 
                 if (sucesso) {
-                  Navigator.pop(context, true);
+                  Navigator.pop(
+                    dialogContext,
+                    true,
+                  );
                 } else {
-                  ScaffoldMessenger.of(context)
-                    .showSnackBar(
-                  const SnackBar(
-                    content: Text(
-                      'Backup inválido ou corrompido.',
+                  ScaffoldMessenger.of(
+                    dialogContext,
+                  ).showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                        'Backup inválido ou corrompido.',
+                      ),
                     ),
-                  ),
-                );
+                  );
                 }
               },
-              icon: const Icon(Icons.restore),
-              label: const Text('Restaurar'),
+              icon: const Icon(
+                Icons.restore,
+              ),
+              label:
+                  const Text('Restaurar'),
             ),
           ],
         );
@@ -924,107 +1012,99 @@ class _HomePageState extends State<HomePage> {
 
     if (resultado == true && mounted) {
       setState(() {});
+
       await mostrarMensagem(
         'Backup restaurado com sucesso.',
       );
     }
   }
 
+  // ==========================================================
+  // MENU DE DADOS
+  // ==========================================================
+
   Future<void> abrirMenuDados() async {
-    await showModalBottomSheet(
+    await showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
-      builder: (context) {
+      builder: (sheetContext) {
         return SafeArea(
           child: Padding(
-            padding: const EdgeInsets.all(16),
+            padding:
+                const EdgeInsets.all(16),
             child: Column(
-              mainAxisSize: MainAxisSize.min,
+              mainAxisSize:
+                  MainAxisSize.min,
               children: [
                 const Text(
                   'Dados e backup',
                   style: TextStyle(
                     fontSize: 20,
-                    fontWeight: FontWeight.bold,
+                    fontWeight:
+                        FontWeight.bold,
                   ),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(
+                  height: 12,
+                ),
                 ListTile(
-                  leading: const Icon(
+                  leading:
+                      const Icon(
                     Icons.save,
                   ),
-                  title: const Text(
+                  title:
+                      const Text(
                     'Salvar agora',
                   ),
-                  subtitle: const Text(
-                    'Confirma o salvamento dos dados atuais',
+                  subtitle:
+                      const Text(
+                    'Salvar todos os dados atuais',
                   ),
                   onTap: () async {
-                    Navigator.pop(context);
-
-                    final movimentacoes =
-                        await Storage.movimentacoes();
-
-                    final estoque =
-                        await Storage.estoque();
-
-                    final servicos =
-                        await Storage.servicos();
-
-                    final a =
-                        await Storage.salvarMovimentacoes(
-                      movimentacoes,
+                    Navigator.pop(
+                      sheetContext,
                     );
-
-                    final b =
-                        await Storage.salvarEstoque(
-                      estoque,
-                    );
-
-                    final c =
-                        await Storage.salvarServicos(
-                      servicos,
-                    );
-
-                    if (a && b && c) {
-                      await mostrarMensagem(
-                        'Dados salvos com sucesso.',
-                      );
-                    } else {
-                      await mostrarMensagem(
-                        'Não foi possível salvar todos os dados.',
-                      );
-                    }
+                    await salvarAgora();
                   },
                 ),
                 ListTile(
-                  leading: const Icon(
+                  leading:
+                      const Icon(
                     Icons.file_upload_outlined,
                   ),
-                  title: const Text(
+                  title:
+                      const Text(
                     'Exportar backup',
                   ),
-                  subtitle: const Text(
+                  subtitle:
+                      const Text(
                     'Copiar uma cópia completa dos dados',
                   ),
-                  onTap: () {
-                    Navigator.pop(context);
-                    abrirBackup();
+                  onTap: () async {
+                    Navigator.pop(
+                      sheetContext,
+                    );
+                    await exportarBackup();
                   },
                 ),
                 ListTile(
-                  leading: const Icon(
+                  leading:
+                      const Icon(
                     Icons.restore,
                   ),
-                  title: const Text(
+                  title:
+                      const Text(
                     'Restaurar backup',
                   ),
-                  subtitle: const Text(
+                  subtitle:
+                      const Text(
                     'Recuperar dados de um backup',
                   ),
-                  onTap: () {
-                    Navigator.pop(context);
-                    restaurarBackup();
+                  onTap: () async {
+                    Navigator.pop(
+                      sheetContext,
+                    );
+                    await restaurarBackup();
                   },
                 ),
               ],
@@ -1053,47 +1133,18 @@ class _HomePageState extends State<HomePage> {
       body: SafeArea(
         child: paginas[pagina],
       ),
-      appBar: pagina == 0
-          ? null
-          : AppBar(
-              title: Text(
-                pagina == 1
-                    ? 'Estoque'
-                    : 'Histórico',
-              ),
-              backgroundColor:
-                  Colors.transparent,
-              elevation: 0,
-              actions: [
-                IconButton(
-                  onPressed: () {
-                    setState(() {});
-                  },
-                  icon: const Icon(
-                    Icons.refresh,
-                  ),
-                  tooltip: 'Atualizar',
-                ),
-                IconButton(
-                  onPressed: abrirMenuDados,
-                  icon: const Icon(
-                    Icons.cloud_sync_outlined,
-                  ),
-                  tooltip: 'Dados e backup',
-                ),
-              ],
-            ),
-      floatingActionButton: pagina == 0
-          ? FloatingActionButton.small(
-              onPressed: abrirMenuDados,
-              child: const Icon(
-                Icons.save_outlined,
-              ),
-            )
-          : null,
-      bottomNavigationBar: NavigationBar(
+      floatingActionButton:
+          FloatingActionButton.small(
+        onPressed: abrirMenuDados,
+        child: const Icon(
+          Icons.save_outlined,
+        ),
+      ),
+      bottomNavigationBar:
+          NavigationBar(
         selectedIndex: pagina,
-        onDestinationSelected: (index) {
+        onDestinationSelected:
+            (index) {
           setState(() {
             pagina = index;
           });
@@ -1140,9 +1191,16 @@ class DashboardPage extends StatefulWidget {
   final DateTime data;
   final VoidCallback onData;
 
-  final Future<void> Function(String, double) onGanho;
-  final Future<void> Function() onGasto;
-  final Future<void> Function() onOutroGanho;
+  final Future<void> Function(
+    String,
+    double,
+  ) onGanho;
+
+  final Future<void> Function()
+      onGasto;
+
+  final Future<void> Function()
+      onOutroGanho;
 
   const DashboardPage({
     super.key,
@@ -1173,14 +1231,17 @@ class _DashboardPageState
     final servicosSalvos =
         await Storage.servicos();
 
-    final data = dataBanco(widget.data);
+    final data =
+        dataBanco(widget.data);
 
     double totalGanhos = 0;
     double totalGastos = 0;
     int totalAtendimentos = 0;
 
     for (final item in lista) {
-      if (item.data != data) continue;
+      if (item.data != data) {
+        continue;
+      }
 
       if (item.tipo == 'ganho') {
         totalGanhos += item.valor;
@@ -1224,7 +1285,7 @@ class _DashboardPageState
     final resultado =
         await showDialog<bool>(
       context: context,
-      builder: (context) {
+      builder: (dialogContext) {
         return AlertDialog(
           title: Text(
             'Editar ${servico.nome}',
@@ -1241,7 +1302,9 @@ class _DashboardPageState
                       'Nome do serviço',
                 ),
               ),
-              const SizedBox(height: 10),
+              const SizedBox(
+                height: 10,
+              ),
               TextField(
                 controller: valor,
                 keyboardType:
@@ -1261,7 +1324,7 @@ class _DashboardPageState
             TextButton(
               onPressed: () =>
                   Navigator.pop(
-                context,
+                dialogContext,
                 false,
               ),
               child:
@@ -1270,7 +1333,7 @@ class _DashboardPageState
             FilledButton(
               onPressed: () =>
                   Navigator.pop(
-                context,
+                dialogContext,
                 true,
               ),
               child:
@@ -1335,7 +1398,7 @@ class _DashboardPageState
     final resultado =
         await showDialog<bool>(
       context: context,
-      builder: (context) {
+      builder: (dialogContext) {
         return AlertDialog(
           title:
               const Text('Novo serviço'),
@@ -1352,7 +1415,9 @@ class _DashboardPageState
                       'Nome do serviço',
                 ),
               ),
-              const SizedBox(height: 10),
+              const SizedBox(
+                height: 10,
+              ),
               TextField(
                 controller: valor,
                 keyboardType:
@@ -1372,7 +1437,7 @@ class _DashboardPageState
             TextButton(
               onPressed: () =>
                   Navigator.pop(
-                context,
+                dialogContext,
                 false,
               ),
               child:
@@ -1381,7 +1446,7 @@ class _DashboardPageState
             FilledButton(
               onPressed: () =>
                   Navigator.pop(
-                context,
+                dialogContext,
                 true,
               ),
               child:
@@ -1458,8 +1523,10 @@ class _DashboardPageState
                 ),
               ),
               IconButton(
-                onPressed: widget.onData,
-                icon: const Icon(
+                onPressed:
+                    widget.onData,
+                icon:
+                    const Icon(
                   Icons.calendar_month,
                 ),
                 tooltip:
@@ -1467,7 +1534,6 @@ class _DashboardPageState
               ),
             ],
           ),
-
           Text(
             dataFormatada(
               dataBanco(widget.data),
@@ -1477,9 +1543,9 @@ class _DashboardPageState
               color: Colors.grey,
             ),
           ),
-
-          const SizedBox(height: 16),
-
+          const SizedBox(
+            height: 16,
+          ),
           Card(
             child: Padding(
               padding:
@@ -1513,9 +1579,9 @@ class _DashboardPageState
               ),
             ),
           ),
-
-          const SizedBox(height: 12),
-
+          const SizedBox(
+            height: 12,
+          ),
           Row(
             children: [
               Expanded(
@@ -1539,9 +1605,9 @@ class _DashboardPageState
               ),
             ],
           ),
-
-          const SizedBox(height: 24),
-
+          const SizedBox(
+            height: 24,
+          ),
           Row(
             children: [
               const Expanded(
@@ -1557,7 +1623,8 @@ class _DashboardPageState
               IconButton(
                 onPressed:
                     adicionarServico,
-                icon: const Icon(
+                icon:
+                    const Icon(
                   Icons.add_circle,
                 ),
                 tooltip:
@@ -1565,13 +1632,14 @@ class _DashboardPageState
               ),
             ],
           ),
-
-          const SizedBox(height: 8),
-
+          const SizedBox(
+            height: 8,
+          ),
           ...servicos.map(
             (servico) => Card(
               child: ListTile(
-                leading: CircleAvatar(
+                leading:
+                    CircleAvatar(
                   child: Icon(
                     servico.icone,
                   ),
@@ -1598,7 +1666,8 @@ class _DashboardPageState
                           editarServico(
                         servico,
                       ),
-                      icon: const Icon(
+                      icon:
+                          const Icon(
                         Icons.edit,
                       ),
                       tooltip:
@@ -1620,9 +1689,9 @@ class _DashboardPageState
               ),
             ),
           ),
-
-          const SizedBox(height: 8),
-
+          const SizedBox(
+            height: 8,
+          ),
           OutlinedButton.icon(
             onPressed: () async {
               await widget
@@ -1630,36 +1699,37 @@ class _DashboardPageState
 
               await carregar();
             },
-            icon: const Icon(
-              Icons.add,
-            ),
-            label: const Text(
-              'Outro ganho',
-            ),
+            icon:
+                const Icon(Icons.add),
+            label:
+                const Text('Outro ganho'),
           ),
-
-          const SizedBox(height: 10),
-
+          const SizedBox(
+            height: 10,
+          ),
           FilledButton.icon(
             onPressed: () async {
               await widget.onGasto();
 
               await carregar();
             },
-            icon: const Icon(
+            icon:
+                const Icon(
               Icons.remove_circle,
             ),
-            label: const Text(
+            label:
+                const Text(
               'Adicionar gasto',
             ),
           ),
-
-          const SizedBox(height: 16),
-
+          const SizedBox(
+            height: 16,
+          ),
           OutlinedButton.icon(
             onPressed: () async {
               final movimentacoes =
-                  await Storage.movimentacoes();
+                  await Storage
+                      .movimentacoes();
 
               final estoque =
                   await Storage.estoque();
@@ -1702,9 +1772,8 @@ class _DashboardPageState
             icon: const Icon(
               Icons.save_outlined,
             ),
-            label: const Text(
-              'Salvar agora',
-            ),
+            label:
+                const Text('Salvar agora'),
           ),
         ],
       ),
@@ -1727,7 +1796,9 @@ class _DashboardPageState
               icone,
               color: cor,
             ),
-            const SizedBox(height: 5),
+            const SizedBox(
+              height: 5,
+            ),
             Text(titulo),
             Text(
               moeda(valor),
@@ -1789,42 +1860,36 @@ class _EstoquePageState
 
     final quantidade =
         TextEditingController(
-      text:
-          produto?.quantidade
+      text: produto?.quantidade
               .toString() ??
           '0',
     );
 
     final minimo =
         TextEditingController(
-      text:
-          produto?.estoqueMinimo
+      text: produto?.estoqueMinimo
               .toString() ??
           '0',
     );
 
     final compra =
         TextEditingController(
-      text: produto
-              ?.precoCompra
-              .toStringAsFixed(
-                  2) ??
+      text: produto?.precoCompra
+              .toStringAsFixed(2) ??
           '',
     );
 
     final venda =
         TextEditingController(
-      text: produto
-              ?.precoVenda
-              .toStringAsFixed(
-                  2) ??
+      text: produto?.precoVenda
+              .toStringAsFixed(2) ??
           '',
     );
 
     final resultado =
         await showDialog<bool>(
       context: context,
-      builder: (context) {
+      builder: (dialogContext) {
         return AlertDialog(
           title: Text(
             produto == null
@@ -1853,8 +1918,7 @@ class _EstoquePageState
                   controller:
                       quantidade,
                   keyboardType:
-                      TextInputType
-                          .number,
+                      TextInputType.number,
                   decoration:
                       const InputDecoration(
                     labelText:
@@ -1867,8 +1931,7 @@ class _EstoquePageState
                 TextField(
                   controller: minimo,
                   keyboardType:
-                      TextInputType
-                          .number,
+                      TextInputType.number,
                   decoration:
                       const InputDecoration(
                     labelText:
@@ -1918,7 +1981,7 @@ class _EstoquePageState
             TextButton(
               onPressed: () =>
                   Navigator.pop(
-                context,
+                dialogContext,
                 false,
               ),
               child:
@@ -1927,7 +1990,7 @@ class _EstoquePageState
             FilledButton(
               onPressed: () =>
                   Navigator.pop(
-                context,
+                dialogContext,
                 true,
               ),
               child:
@@ -1952,8 +2015,7 @@ class _EstoquePageState
 
     final quantidadeFinal =
         int.tryParse(
-              quantidade.text
-                  .trim(),
+              quantidade.text.trim(),
             ) ??
             0;
 
@@ -1964,14 +2026,10 @@ class _EstoquePageState
             0;
 
     final compraFinal =
-        valorNumero(
-      compra.text,
-    );
+        valorNumero(compra.text);
 
     final vendaFinal =
-        valorNumero(
-      venda.text,
-    );
+        valorNumero(venda.text);
 
     nome.dispose();
     quantidade.dispose();
@@ -2013,8 +2071,7 @@ class _EstoquePageState
       final index =
           lista.indexWhere(
         (item) =>
-            item.id ==
-            produto.id,
+            item.id == produto.id,
       );
 
       if (index >= 0) {
@@ -2035,11 +2092,10 @@ class _EstoquePageState
     final confirmar =
         await showDialog<bool>(
       context: context,
-      builder: (context) {
+      builder: (dialogContext) {
         return AlertDialog(
-          title: const Text(
-            'Excluir produto?',
-          ),
+          title:
+              const Text('Excluir produto?'),
           content: Text(
             'Deseja excluir "${produto.nome}"?',
           ),
@@ -2047,7 +2103,7 @@ class _EstoquePageState
             TextButton(
               onPressed: () =>
                   Navigator.pop(
-                context,
+                dialogContext,
                 false,
               ),
               child:
@@ -2056,7 +2112,7 @@ class _EstoquePageState
             FilledButton(
               onPressed: () =>
                   Navigator.pop(
-                context,
+                dialogContext,
                 true,
               ),
               child:
@@ -2110,12 +2166,9 @@ class _EstoquePageState
           FloatingActionButton.extended(
         onPressed:
             () => editarProduto(),
-        icon: const Icon(
-          Icons.add,
-        ),
-        label: const Text(
-          'Produto',
-        ),
+        icon: const Icon(Icons.add),
+        label:
+            const Text('Produto'),
       ),
       body: RefreshIndicator(
         onRefresh: carregar,
@@ -2133,9 +2186,9 @@ class _EstoquePageState
                     FontWeight.bold,
               ),
             ),
-
-            const SizedBox(height: 6),
-
+            const SizedBox(
+              height: 6,
+            ),
             Text(
               '${produtos.length} produtos • ${moeda(valorTotal)}',
               style:
@@ -2143,9 +2196,9 @@ class _EstoquePageState
                 color: Colors.grey,
               ),
             ),
-
-            const SizedBox(height: 16),
-
+            const SizedBox(
+              height: 16,
+            ),
             TextField(
               onChanged: (texto) {
                 setState(() {
@@ -2164,22 +2217,18 @@ class _EstoquePageState
                     OutlineInputBorder(
                   borderRadius:
                       BorderRadius
-                          .circular(
-                    14,
-                  ),
+                          .circular(14),
                 ),
               ),
             ),
-
-            const SizedBox(height: 16),
-
+            const SizedBox(
+              height: 16,
+            ),
             if (lista.isEmpty)
               const Card(
                 child: Padding(
                   padding:
-                      EdgeInsets.all(
-                    24,
-                  ),
+                      EdgeInsets.all(24),
                   child: Center(
                     child: Text(
                       'Nenhum produto cadastrado.',
@@ -2187,7 +2236,6 @@ class _EstoquePageState
                   ),
                 ),
               ),
-
             ...lista.map(
               (produto) => Card(
                 child: ListTile(
@@ -2323,11 +2371,10 @@ class _HistoricoPageState
     final confirmar =
         await showDialog<bool>(
       context: context,
-      builder: (context) {
+      builder: (dialogContext) {
         return AlertDialog(
-          title: const Text(
-            'Excluir registro?',
-          ),
+          title:
+              const Text('Excluir registro?'),
           content: Text(
             'Deseja excluir "${item.categoria}"?',
           ),
@@ -2335,7 +2382,7 @@ class _HistoricoPageState
             TextButton(
               onPressed: () =>
                   Navigator.pop(
-                context,
+                dialogContext,
                 false,
               ),
               child:
@@ -2344,7 +2391,7 @@ class _HistoricoPageState
             FilledButton(
               onPressed: () =>
                   Navigator.pop(
-                context,
+                dialogContext,
                 true,
               ),
               child:
@@ -2391,9 +2438,9 @@ class _HistoricoPageState
                   FontWeight.bold,
             ),
           ),
-
-          const SizedBox(height: 16),
-
+          const SizedBox(
+            height: 16,
+          ),
           if (lista.isEmpty)
             const Card(
               child: Padding(
@@ -2406,7 +2453,6 @@ class _HistoricoPageState
                 ),
               ),
             ),
-
           ...lista.map(
             (item) => Card(
               child: ListTile(
